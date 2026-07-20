@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Apply to every cargo invocation, including tests, release builds, and the
+  # CLI smoke checks below. Clippy also keeps its explicit lint-level flag.
+  RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -81,15 +87,15 @@ jobs:
       - name: Discover plugins
         run: cargo run --locked -- plugins
 
-      - name: Verify generated schema
+      - name: Verify generated schema is committed
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $generated = Join-Path $env:RUNNER_TEMP 'winix-cfg.schema.json'
-          cargo run --locked -- schema --output $generated
-          if ((Get-FileHash -Algorithm SHA256 winix-cfg.schema.json).Hash -ne (Get-FileHash -Algorithm SHA256 $generated).Hash) {
-              git diff --no-index -- winix-cfg.schema.json $generated | Out-Host
-              throw 'winix-cfg.schema.json is not current; regenerate it with cargo run -- schema --output winix-cfg.schema.json'
+          git ls-files --error-unmatch winix-cfg.schema.json | Out-Null
+          cargo run --locked -- schema --output winix-cfg.schema.json
+          git diff --exit-code -- winix-cfg.schema.json
+          if ($LASTEXITCODE -ne 0) {
+              throw 'winix-cfg.schema.json is not current; regenerate it and commit the result.'
           }
 
       - name: Validate safe quickstart
