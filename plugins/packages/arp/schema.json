@@ -3,6 +3,10 @@
   "title": "Add/Remove Programs registrations",
   "description": "System programs removed by stable uninstall-registry identity.",
   "type": "object",
+  "propertyNames": {
+    "pattern": "^[^\\s\\\\/](?:[^\\\\/]*[^\\s\\\\/])?$",
+    "not": { "enum": [".", ".."] }
+  },
   "additionalProperties": {
     "type": "object",
     "properties": {
