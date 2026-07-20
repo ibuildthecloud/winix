@@ -3,10 +3,9 @@ param([Parameter(Mandatory)] [ValidateSet('validate', 'plan', 'apply')] [string]
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '..\..\shared\Winix.PluginSdk.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Winix.Appx.psm1') -Force
 
-$script:ProvisionedInventory = $null
 $script:UserInventory = $null
-$script:SystemRegisteredInventory = $null
 $script:SystemRegistryInventory = $null
 
 function Get-UserInventory {
@@ -14,13 +13,6 @@ function Get-UserInventory {
         $script:UserInventory = @(Get-AppxPackage -ErrorAction SilentlyContinue | Sort-Object PackageFullName -Unique)
     }
     return @($script:UserInventory)
-}
-
-function Get-SystemRegisteredInventory {
-    if ($null -eq $script:SystemRegisteredInventory) {
-        $script:SystemRegisteredInventory = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Sort-Object PackageFullName -Unique)
-    }
-    return @($script:SystemRegisteredInventory)
 }
 
 function Get-SystemRegistryInventory {
@@ -48,40 +40,6 @@ function Get-SystemRegistryInventory {
     return @($script:SystemRegistryInventory)
 }
 
-function Get-ProvisionedInventory {
-    if ($null -ne $script:ProvisionedInventory) { return @($script:ProvisionedInventory) }
-    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $command = 'Get-AppxProvisionedPackage -Online | Select-Object DisplayName,PackageName,Version | ConvertTo-Json -Depth 5 -Compress'
-    $json = & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -Command $command
-    if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell provisioning inventory failed with exit code $LASTEXITCODE." }
-    $script:ProvisionedInventory = if ([string]::IsNullOrWhiteSpace(($json -join ''))) { @() } else { @((($json -join "`n") | ConvertFrom-Json)) }
-    return @($script:ProvisionedInventory)
-}
-
-function Remove-ProvisionedPackage([string] $PackageName) {
-    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $escaped = $PackageName.Replace("'", "''")
-    $command = "Remove-AppxProvisionedPackage -Online -PackageName '$escaped' -AllUsers -ErrorAction Stop | Out-Null"
-    & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -Command $command
-    $exitCode = $LASTEXITCODE
-    $script:ProvisionedInventory = $null
-    if ($exitCode -ne 0) {
-        $stillProvisioned = @(Get-ProvisionedInventory | Where-Object { $_.PackageName -ceq $PackageName })
-        if ($stillProvisioned.Count -gt 0) { throw "Windows PowerShell provisioning removal failed for '$PackageName' with exit code $exitCode." }
-    }
-}
-
-function Remove-RegisteredPackageForAllUsers([string] $PackageFullName) {
-    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $escaped = $PackageFullName.Replace("'", "''")
-    $command = "Remove-AppxPackage -Package '$escaped' -AllUsers -ErrorAction Stop"
-    & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -Command $command
-    $exitCode = $LASTEXITCODE
-    $script:SystemRegisteredInventory = $null
-    $script:SystemRegistryInventory = $null
-    if ($exitCode -ne 0) { throw "Windows PowerShell all-user AppX removal failed for '$PackageFullName' with exit code $exitCode." }
-}
-
 function Get-UserAppxState([string] $Name) {
     $packages = @(Get-UserInventory | Where-Object { $_.Name -ceq $Name })
     return [ordered]@{
@@ -96,38 +54,30 @@ function Get-UserAppxState([string] $Name) {
     }
 }
 
-function Get-SystemAppxState([string] $Name) {
+function Get-SystemPlanningAppxState([string] $Name) {
     if (Test-WinixAdministrator) {
-        $registered = @(Get-SystemRegisteredInventory | Where-Object { $_.Name -ceq $Name })
-        $provisioned = @(Get-ProvisionedInventory |
-            Where-Object { $_.DisplayName -ceq $Name } | Sort-Object PackageName -Unique)
-        return [ordered]@{
-            installed = ($registered.Count -gt 0 -or $provisioned.Count -gt 0)
-            inventory_source = 'appx_cmdlets'
-            registered = @($registered | ForEach-Object {
-                [ordered]@{ name = $_.Name; package_full_name = $_.PackageFullName; version = $_.Version.ToString() }
-            })
-            provisioned = @($provisioned | ForEach-Object {
-                [ordered]@{ name = $_.DisplayName; package_name = $_.PackageName; version = $_.Version.ToString() }
-            })
-        }
+        return Get-SystemAppxState -Name $Name
     }
 
     # The supported AppX cmdlets require elevation for machine inventory. The
-    # registry is used only for a read-only plan; elevated apply re-observes
-    # authoritative state before making changes.
-    $packageNames = @(Get-SystemRegistryInventory | Where-Object {
-        $_.StartsWith("$Name`_", [System.StringComparison]::Ordinal)
-    })
+    # registry is used only for a read-only plan. Its package identities form
+    # the closed precondition that elevated apply re-observes authoritatively.
+    Assert-AppxPackageName -Name $Name
+    $packageNames = @(
+        Get-CanonicalAppxPackageNames -Name $Name -PackageNames @(
+            Get-SystemRegistryInventory | Where-Object {
+                $_.StartsWith("$Name`_", [System.StringComparison]::Ordinal)
+            }
+        )
+    )
     return [ordered]@{
         installed = ($packageNames.Count -gt 0)
-        inventory_source = 'appx_registry'
-        packages = @($packageNames)
+        packages = $packageNames
     }
 }
 
 function Get-AppxState([string] $Name, [string] $Scope) {
-    if ($Scope -eq 'system') { return Get-SystemAppxState -Name $Name }
+    if ($Scope -eq 'system') { return Get-SystemPlanningAppxState -Name $Name }
     return Get-UserAppxState -Name $Name
 }
 
@@ -187,14 +137,18 @@ if ($Operation -eq 'apply') {
     if (-not (Test-WinixPropertyPresent $request 'operations')) {
         throw 'Apply request is missing its planned operations.'
     }
+    if ($scope -eq 'system') {
+        Write-WinixResponse (Invoke-SystemAppxApply -Request $request)
+        exit
+    }
 
     $planned = @($request.operations)
     foreach ($operationItem in $planned) {
         if ($operationItem.resource.type -ne 'appx.package' -or $operationItem.action -ne 'uninstall') {
             throw "Unsupported planned operation '$($operationItem.id)'."
         }
-        $current = Get-AppxState -Name $operationItem.resource.id -Scope $scope
-        if ($scope -eq 'user' -and -not (Test-WinixJsonEqual $current $operationItem.before)) {
+        $current = Get-UserAppxState -Name $operationItem.resource.id
+        if (-not (Test-WinixJsonEqual $current $operationItem.before)) {
             throw "Plan is stale for '$($operationItem.id)': AppX package state changed after planning."
         }
     }
@@ -203,21 +157,11 @@ if ($Operation -eq 'apply') {
     foreach ($operationItem in $planned) {
         $packageName = $operationItem.resource.id
         Write-WinixEvent -Kind 'resource_change_started' -ResourceType 'appx.package' -ResourceId $packageName -Data @{ operation_id = $operationItem.id; action = 'uninstall'; before = $operationItem.before; after = $operationItem.after }
-        if ($scope -eq 'system') {
-            $authoritative = Get-SystemAppxState -Name $packageName
-            foreach ($package in @($authoritative.provisioned)) {
-                Remove-ProvisionedPackage -PackageName $package.package_name
-            }
-            foreach ($package in @($authoritative.registered)) {
-                Remove-RegisteredPackageForAllUsers -PackageFullName $package.package_full_name
-            }
-        } else {
-            foreach ($package in @($operationItem.before.packages)) {
-                Remove-AppxPackage -Package $package.package_full_name -ErrorAction Stop
-            }
-            $script:UserInventory = $null
+        foreach ($package in @($operationItem.before.packages)) {
+            Remove-AppxPackage -Package $package.package_full_name -ErrorAction Stop
         }
-        $observed = Get-AppxState -Name $packageName -Scope $scope
+        $script:UserInventory = $null
+        $observed = Get-UserAppxState -Name $packageName
         if ($observed.Installed) {
             $diagnostic = @{
                 severity = 'error'
@@ -251,7 +195,11 @@ foreach ($entry in $request.configuration.PSObject.Properties) {
         resource = @{ type = 'appx.package'; id = $packageName }
         before = $current
         after = @{ installed = $false; packages = @() }
-        data = @{}
+        data = if ($scope -eq 'system') {
+            @{ package_names = @($current.packages); depends_on = @() }
+        } else {
+            @{}
+        }
     }
     $operations.Add($plannedOperation)
     Write-WinixEvent -Kind 'resource_status' -ResourceType 'appx.package' -ResourceId $packageName -Data @{ status = 'change_required'; operation = $plannedOperation }
