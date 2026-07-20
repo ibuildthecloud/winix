@@ -551,13 +551,7 @@ pub fn apply_plan(
     {
         bail!("the supplied plan contains a plugin path not present in configuration");
     }
-    if !planned_result_order
-        .iter()
-        .copied()
-        .eq(expected_order.iter().map(String::as_str))
-    {
-        bail!("the supplied plan plugin order does not match the current configuration");
-    }
+    validate_apply_result_order(&planned_result_order, &expected_order)?;
     apply_prepared(plugins, scope_name, device, events, prepared, &mut results)?;
     Ok(execution_result(
         "apply",
@@ -634,6 +628,18 @@ fn ordered_result_paths(plan: &Value) -> Result<Vec<&str>> {
         paths.push(path);
     }
     Ok(paths)
+}
+
+fn validate_apply_result_order(planned: &[&str], expected: &[String]) -> Result<()> {
+    if planned
+        .iter()
+        .copied()
+        .eq(expected.iter().map(String::as_str))
+    {
+        Ok(())
+    } else {
+        bail!("the supplied plan plugin order does not match the current configuration")
+    }
 }
 
 pub fn system_restart_required(result: &Value) -> bool {
@@ -735,7 +741,21 @@ fn apply_prepared(
             scope_name,
             device,
         )?;
-        if !validate_apply_response(&plugin.manifest.name, &response)? {
+        let accepted = match validate_apply_response(&plugin.manifest.name, &response) {
+            Ok(accepted) => accepted,
+            Err(error) => {
+                emit_invalid_apply_result(
+                    events,
+                    plugin,
+                    &absolute_path,
+                    scope_name,
+                    device,
+                    &error,
+                );
+                return Err(error);
+            }
+        };
+        if !accepted {
             let message = plugin_failure_message(&response);
             events.emit_plugin(
                 "plugin_failed",
@@ -756,38 +776,14 @@ fn apply_prepared(
                 plugin.manifest.name
             );
         }
-        if response.get("operations") != Some(&planned_operations) {
-            bail!(
-                "plugin {} returned an operation queue that differs from the approved plan",
-                plugin.manifest.name
-            );
-        }
-        let applied = response
-            .get("applied_operation_ids")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "plugin {} did not account for its applied operation IDs",
-                    plugin.manifest.name
-                )
-            })?;
-        let applied_ids = applied
-            .iter()
-            .map(|value| value.as_str().map(str::to_owned))
-            .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "plugin {} returned a non-string applied operation ID",
-                    plugin.manifest.name
-                )
-            })?;
-        if applied_ids != planned_ids {
-            bail!(
-                "plugin {} applied operations that differ from its plan: planned {:?}, applied {:?}",
-                plugin.manifest.name,
-                planned_ids,
-                applied_ids
-            );
+        if let Err(error) = validate_apply_accounting(
+            &plugin.manifest.name,
+            &response,
+            &planned_operations,
+            &planned_ids,
+        ) {
+            emit_invalid_apply_result(events, plugin, &absolute_path, scope_name, device, &error);
+            return Err(error);
         }
         events.emit_plugin(
             "plugin_completed",
@@ -800,6 +796,63 @@ fn apply_prepared(
         results.insert(absolute_path, response);
     }
     Ok(())
+}
+
+fn validate_apply_accounting(
+    plugin_name: &str,
+    response: &Value,
+    planned_operations: &Value,
+    planned_ids: &[String],
+) -> Result<()> {
+    if response.get("operations") != Some(planned_operations) {
+        bail!(
+            "plugin {plugin_name} returned an operation queue that differs from the approved plan"
+        );
+    }
+    let applied = response
+        .get("applied_operation_ids")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} did not account for its applied operation IDs")
+        })?;
+    let applied_ids = applied
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} returned a non-string applied operation ID")
+        })?;
+    if applied_ids != planned_ids {
+        bail!(
+            "plugin {plugin_name} applied operations that differ from its plan: planned {planned_ids:?}, applied {applied_ids:?}"
+        );
+    }
+    Ok(())
+}
+
+fn emit_invalid_apply_result(
+    events: &mut EventEmitter,
+    plugin: &Plugin,
+    absolute_path: &str,
+    scope_name: &str,
+    device: &DeviceContext,
+    error: &anyhow::Error,
+) {
+    events.emit_plugin(
+        "plugin_failed",
+        &plugin.manifest.name,
+        absolute_path,
+        scope_name,
+        device,
+        json!({
+            "operation": "apply",
+            "diagnostic": {
+                "severity": "error",
+                "code": "plugin.protocol.invalid_result",
+                "message": format!("{error:#}")
+            }
+        }),
+    );
 }
 
 fn validate_validation_response(plugin_name: &str, response: &Value) -> Result<bool> {
@@ -1051,8 +1104,9 @@ mod tests {
     use super::{
         Placement, Plugin, PluginTask, add_operation_dependencies, operation_ids,
         planned_operations, plugin_failure_message, required_operation_ids, system_restart_pending,
-        system_restart_required, validate_apply_response, validate_operation_ids,
-        validate_plan_response, validate_plan_sequence, validate_validation_response,
+        system_restart_required, validate_apply_accounting, validate_apply_response,
+        validate_apply_result_order, validate_operation_ids, validate_plan_response,
+        validate_plan_sequence, validate_validation_response,
     };
 
     fn valid_operation() -> Value {
@@ -1353,6 +1407,31 @@ mod tests {
     }
 
     #[test]
+    fn successful_apply_accounting_requires_the_exact_queue_and_id_order() {
+        let response = valid_apply_response();
+        let planned_operations = response["operations"].clone();
+        let planned_ids = vec!["example.widget.install".to_owned()];
+
+        assert!(
+            validate_apply_accounting("test", &response, &planned_operations, &planned_ids).is_ok()
+        );
+
+        let mut changed_queue = response.clone();
+        changed_queue["operations"][0]["after"] = json!({ "installed": false });
+        assert!(
+            validate_apply_accounting("test", &changed_queue, &planned_operations, &planned_ids)
+                .is_err()
+        );
+
+        let mut changed_ids = response;
+        changed_ids["applied_operation_ids"] = json!(["different.operation"]);
+        assert!(
+            validate_apply_accounting("test", &changed_ids, &planned_operations, &planned_ids)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn global_plan_dependencies_must_reference_earlier_unique_operations() {
         let first = json!({
             "result_order": ["a"],
@@ -1425,6 +1504,26 @@ mod tests {
         let mut reversed = round_tripped;
         reversed["result_order"] = json!(["a.dependent", "z.provider"]);
         assert!(validate_plan_sequence(&[&reversed]).is_err());
+    }
+
+    #[test]
+    fn apply_rejects_reordered_independent_plugin_results() {
+        let expected = vec!["users.current.first".into(), "users.current.second".into()];
+
+        assert!(
+            validate_apply_result_order(
+                &["users.current.first", "users.current.second"],
+                &expected
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_apply_result_order(
+                &["users.current.second", "users.current.first"],
+                &expected
+            )
+            .is_err()
+        );
     }
 
     #[test]
