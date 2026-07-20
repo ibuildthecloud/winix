@@ -165,6 +165,35 @@ impl EventEmitter {
         );
     }
 
+    pub fn run_operation<T>(
+        &mut self,
+        operation: &str,
+        failure_code: &str,
+        run: impl FnOnce(&mut Self) -> anyhow::Result<(T, Option<Value>)>,
+    ) -> anyhow::Result<T> {
+        self.emit("operation_started", operation_payload(operation, None));
+        match run(self) {
+            Ok((value, result)) => {
+                self.emit("operation_completed", operation_payload(operation, result));
+                Ok(value)
+            }
+            Err(error) => {
+                self.emit(
+                    "operation_failed",
+                    json!({
+                        "operation": operation,
+                        "diagnostic": {
+                            "severity": "error",
+                            "code": failure_code,
+                            "message": format!("{error:#}")
+                        }
+                    }),
+                );
+                Err(error)
+            }
+        }
+    }
+
     fn emit_enriched(
         &mut self,
         kind: &str,
@@ -425,6 +454,61 @@ mod tests {
         assert_eq!(collected[1].sequence, 2);
         assert_eq!(collected[0].operation_id, "test");
         assert_eq!(also_collected.borrow().len(), 2);
+    }
+
+    #[test]
+    fn reported_operation_emits_one_completion_on_success() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let mut emitter = EventEmitter {
+            operation_id: "test".into(),
+            sequence: 0,
+            sinks: vec![Box::new(Collector(collected.clone()))],
+        };
+
+        let value = emitter
+            .run_operation("validate", "execution.validate.failed", |_| {
+                Ok((42, Some(json!({ "valid": true }))))
+            })
+            .unwrap();
+
+        assert_eq!(value, 42);
+        let events = collected.borrow();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, "operation_started");
+        assert_eq!(events[1].kind, "operation_completed");
+        assert_eq!(events[1].payload["operation"], "validate");
+        assert_eq!(events[1].payload["result"]["valid"], true);
+    }
+
+    #[test]
+    fn reported_operation_emits_one_failure_and_preserves_error() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let mut emitter = EventEmitter {
+            operation_id: "test".into(),
+            sequence: 0,
+            sinks: vec![Box::new(Collector(collected.clone()))],
+        };
+
+        let error = emitter
+            .run_operation::<()>("plan", "execution.plan.failed", |_| {
+                anyhow::bail!("deliberate failure")
+            })
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "deliberate failure");
+        let events = collected.borrow();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, "operation_started");
+        assert_eq!(events[1].kind, "operation_failed");
+        assert_eq!(events[1].payload["operation"], "plan");
+        assert_eq!(
+            events[1].payload["diagnostic"]["code"],
+            "execution.plan.failed"
+        );
+        assert_eq!(
+            events[1].payload["diagnostic"]["message"],
+            "deliberate failure"
+        );
     }
 
     #[test]

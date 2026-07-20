@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use clap::{Parser, Subcommand};
-use event::{EventEmitter, OutputFormat, operation_payload};
+use event::{EventEmitter, OutputFormat};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -115,14 +115,40 @@ struct UserRequest {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum WorkerOperation {
+    Validate,
     Plan,
     Apply,
+}
+
+impl WorkerOperation {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Validate => "validate",
+            Self::Plan => "plan",
+            Self::Apply => "apply",
+        }
+    }
+
+    fn restart_required(self, result: &Value) -> bool {
+        match self {
+            Self::Validate => false,
+            Self::Plan => engine::system_restart_pending(result),
+            Self::Apply => engine::system_restart_required(result),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApplyStep {
     System,
     User,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValidationStep {
+    UserLocal,
+    UserWorker,
+    SystemLocal,
 }
 
 fn main() {
@@ -176,25 +202,49 @@ fn run() -> Result<i32> {
         }
         Command::Validate { config, output } => {
             let mut events = EventEmitter::new(output);
-            events.emit("operation_started", operation_payload("validate", None));
-            let path = paths::config(config)?;
-            let document = config::load(&path)?;
-            engine::validate_document(&document, &plugins)?;
-            let resolved = device::resolve(&document)?;
-            let effective_document =
-                plugin::with_required_configuration(&resolved.document, &plugins)?;
-            engine::validate_document(&effective_document, &plugins)?;
-            engine::validate_plugins(
-                &effective_document,
-                &plugins,
-                &[engine::Scope::UserCurrent, engine::Scope::System],
-                &resolved.context,
-                &mut events,
-            )?;
-            events.emit(
-                "operation_completed",
-                operation_payload("validate", Some(json!({ "valid": true, "config": path }))),
-            );
+            events.run_operation("validate", "execution.validate.failed", |events| {
+                let path = paths::config(config)?;
+                let document = config::load(&path)?;
+                engine::validate_document(&document, &plugins)?;
+                let resolved = device::resolve(&document)?;
+                let effective_document =
+                    plugin::with_required_configuration(&resolved.document, &plugins)?;
+                engine::validate_document(&effective_document, &plugins)?;
+                let elevated = powershell::is_elevated()?;
+                let steps = validation_steps(&effective_document, &plugins, elevated);
+                if steps.contains(&ValidationStep::UserWorker) {
+                    powershell::ensure_unelevated_worker_available()?;
+                }
+                for step in steps {
+                    match step {
+                        ValidationStep::UserLocal => engine::validate_plugins(
+                            &effective_document,
+                            &plugins,
+                            &[engine::Scope::UserCurrent],
+                            &resolved.context,
+                            events,
+                        )?,
+                        ValidationStep::UserWorker => {
+                            run_user_unelevated(
+                                &effective_document,
+                                &resolved.context,
+                                &plugins_dir,
+                                events,
+                                WorkerOperation::Validate,
+                                vec![],
+                            )?;
+                        }
+                        ValidationStep::SystemLocal => engine::validate_plugins(
+                            &effective_document,
+                            &plugins,
+                            &[engine::Scope::System],
+                            &resolved.context,
+                            events,
+                        )?,
+                    }
+                }
+                Ok(((), Some(json!({ "valid": true, "config": path }))))
+            })?;
         }
         Command::Plugins => {
             for plugin in plugins {
@@ -226,28 +276,26 @@ fn run() -> Result<i32> {
         }
         Command::Inspect { config, output } => {
             let mut events = EventEmitter::new(output);
-            events.emit("operation_started", operation_payload("inspect", None));
-            let path = paths::config(config)?;
-            let document = config::load(&path)?;
-            engine::validate_document(&document, &plugins)?;
-            let resolved = device::resolve(&document)?;
-            let effective_document =
-                plugin::with_required_configuration(&resolved.document, &plugins)?;
-            engine::validate_document(&effective_document, &plugins)?;
-            if powershell::is_elevated()? {
-                bail!("current-user inspection must be run from a non-elevated terminal");
-            }
-            let result = engine::plan(
-                &effective_document,
-                &plugins,
-                engine::Scope::UserCurrent,
-                &resolved.context,
-                &mut events,
-            )?;
-            events.emit(
-                "operation_completed",
-                operation_payload("inspect", Some(result)),
-            );
+            events.run_operation("inspect", "execution.inspect.failed", |events| {
+                let path = paths::config(config)?;
+                let document = config::load(&path)?;
+                engine::validate_document(&document, &plugins)?;
+                let resolved = device::resolve(&document)?;
+                let effective_document =
+                    plugin::with_required_configuration(&resolved.document, &plugins)?;
+                engine::validate_document(&effective_document, &plugins)?;
+                if powershell::is_elevated()? {
+                    bail!("current-user inspection must be run from a non-elevated terminal");
+                }
+                let result = engine::plan(
+                    &effective_document,
+                    &plugins,
+                    engine::Scope::UserCurrent,
+                    &resolved.context,
+                    events,
+                )?;
+                Ok(((), Some(result)))
+            })?;
         }
         Command::Plan {
             config,
@@ -257,77 +305,76 @@ fn run() -> Result<i32> {
             output,
         } => {
             let mut events = EventEmitter::new(output);
-            events.emit("operation_started", operation_payload("plan", None));
-            let path = paths::config(config)?;
-            let document = config::load(&path)?;
-            engine::validate_document(&document, &plugins)?;
-            let resolved = device::resolve(&document)?;
-            let effective_document =
-                plugin::with_required_configuration(&resolved.document, &plugins)?;
-            engine::validate_document(&effective_document, &plugins)?;
-            let elevated = powershell::is_elevated()?;
-            let mut user_result = Value::Null;
-            let mut system_result = Value::Null;
-            let steps = scope_steps(all, system, user, elevated);
-            if elevated && steps.contains(&ApplyStep::User) {
-                powershell::ensure_unelevated_worker_available()?;
-            }
-            for step in steps {
-                match step {
-                    ApplyStep::System => {
-                        system_result = if elevated {
-                            engine::plan(
-                                &effective_document,
-                                &plugins,
-                                engine::Scope::System,
-                                &resolved.context,
-                                &mut events,
-                            )?
-                        } else {
-                            run_system_elevated(
-                                &effective_document,
-                                &resolved.context,
-                                &plugins_dir,
-                                &mut events,
-                                WorkerOperation::Plan,
-                                &Value::Null,
-                            )?
-                        };
+            let restart_pending =
+                events.run_operation("plan", "execution.plan.failed", |events| {
+                    let path = paths::config(config)?;
+                    let document = config::load(&path)?;
+                    engine::validate_document(&document, &plugins)?;
+                    let resolved = device::resolve(&document)?;
+                    let effective_document =
+                        plugin::with_required_configuration(&resolved.document, &plugins)?;
+                    engine::validate_document(&effective_document, &plugins)?;
+                    let elevated = powershell::is_elevated()?;
+                    let mut user_result = Value::Null;
+                    let mut system_result = Value::Null;
+                    let steps = scope_steps(all, system, user, elevated);
+                    if elevated && steps.contains(&ApplyStep::User) {
+                        powershell::ensure_unelevated_worker_available()?;
                     }
-                    ApplyStep::User => {
-                        let prior_operations = engine::planned_operations(&system_result);
-                        user_result = if elevated {
-                            run_user_unelevated(
-                                &effective_document,
-                                &resolved.context,
-                                &plugins_dir,
-                                &mut events,
-                                WorkerOperation::Plan,
-                                prior_operations,
-                            )?
-                        } else {
-                            engine::plan_with_prior_operations(
-                                &effective_document,
-                                &plugins,
-                                engine::Scope::UserCurrent,
-                                &resolved.context,
-                                &mut events,
-                                &prior_operations,
-                            )?
-                        };
+                    for step in steps {
+                        match step {
+                            ApplyStep::System => {
+                                system_result = if elevated {
+                                    engine::plan(
+                                        &effective_document,
+                                        &plugins,
+                                        engine::Scope::System,
+                                        &resolved.context,
+                                        events,
+                                    )?
+                                } else {
+                                    run_system_elevated(
+                                        &effective_document,
+                                        &resolved.context,
+                                        &plugins_dir,
+                                        events,
+                                        WorkerOperation::Plan,
+                                        &Value::Null,
+                                    )?
+                                };
+                            }
+                            ApplyStep::User => {
+                                let prior_operations = engine::planned_operations(&system_result);
+                                user_result = if elevated {
+                                    run_user_unelevated(
+                                        &effective_document,
+                                        &resolved.context,
+                                        &plugins_dir,
+                                        events,
+                                        WorkerOperation::Plan,
+                                        prior_operations,
+                                    )?
+                                } else {
+                                    engine::plan_with_prior_operations(
+                                        &effective_document,
+                                        &plugins,
+                                        engine::Scope::UserCurrent,
+                                        &resolved.context,
+                                        events,
+                                        &prior_operations,
+                                    )?
+                                };
+                            }
+                        }
                     }
-                }
-            }
-            engine::validate_plan_sequence(&[&system_result, &user_result])?;
-            let restart_pending = engine::system_restart_pending(&system_result)
-                || engine::system_restart_pending(&user_result);
-            events.emit(
-                "operation_completed",
-                operation_payload(
-                    "plan",
-                    Some(json!({ "user": user_result, "system": system_result })),
-                ),
-            );
+                    engine::validate_plan_sequence(&[&system_result, &user_result])?;
+                    let restart_pending = engine::system_restart_pending(&system_result)
+                        || engine::system_restart_pending(&user_result);
+                    Ok((
+                        restart_pending,
+                        Some(json!({ "user": user_result, "system": system_result })),
+                    ))
+                })?;
             if restart_pending {
                 events.emit(
                     "restart_required",
@@ -348,102 +395,101 @@ fn run() -> Result<i32> {
             output,
         } => {
             let mut events = EventEmitter::new(output);
-            events.emit("operation_started", operation_payload("apply", None));
-            let path = paths::config(config)?;
-            let document = config::load(&path)?;
-            engine::validate_document(&document, &plugins)?;
-            let resolved = device::resolve(&document)?;
-            let effective_document =
-                plugin::with_required_configuration(&resolved.document, &plugins)?;
-            engine::validate_document(&effective_document, &plugins)?;
-            let elevated = powershell::is_elevated()?;
+            let restart_required =
+                events.run_operation("apply", "execution.apply.failed", |events| {
+                    let path = paths::config(config)?;
+                    let document = config::load(&path)?;
+                    engine::validate_document(&document, &plugins)?;
+                    let resolved = device::resolve(&document)?;
+                    let effective_document =
+                        plugin::with_required_configuration(&resolved.document, &plugins)?;
+                    engine::validate_document(&effective_document, &plugins)?;
+                    let elevated = powershell::is_elevated()?;
 
-            let steps = scope_steps(all, system, user, elevated);
-            if elevated && steps.contains(&ApplyStep::User) {
-                powershell::ensure_unelevated_worker_available()?;
-            }
-            let mut user_result = Value::Null;
-            let mut system_result = Value::Null;
-            for step in steps {
-                match step {
-                    ApplyStep::System => {
-                        if elevated {
-                            let system_plan = engine::plan(
-                                &effective_document,
-                                &plugins,
-                                engine::Scope::System,
-                                &resolved.context,
-                                &mut events,
-                            )?;
-                            engine::validate_plan_sequence(&[&system_plan])?;
-                            system_result = apply_system(
-                                &effective_document,
-                                &resolved.context,
-                                &plugins_dir,
-                                &plugins,
-                                true,
-                                &mut events,
-                                &system_plan,
-                            )?;
-                        } else {
-                            // Elevate before inspecting system state. The worker
-                            // builds and applies its plan under the same token,
-                            // so --all requests UAC before potentially slow
-                            // WinGet/AppX inventory and prompts only once.
-                            system_result = apply_system(
-                                &effective_document,
-                                &resolved.context,
-                                &plugins_dir,
-                                &plugins,
-                                false,
-                                &mut events,
-                                &Value::Null,
-                            )?;
+                    let steps = scope_steps(all, system, user, elevated);
+                    if elevated && steps.contains(&ApplyStep::User) {
+                        powershell::ensure_unelevated_worker_available()?;
+                    }
+                    let mut user_result = Value::Null;
+                    let mut system_result = Value::Null;
+                    for step in steps {
+                        match step {
+                            ApplyStep::System => {
+                                if elevated {
+                                    let system_plan = engine::plan(
+                                        &effective_document,
+                                        &plugins,
+                                        engine::Scope::System,
+                                        &resolved.context,
+                                        events,
+                                    )?;
+                                    engine::validate_plan_sequence(&[&system_plan])?;
+                                    system_result = apply_system(
+                                        &effective_document,
+                                        &resolved.context,
+                                        &plugins_dir,
+                                        &plugins,
+                                        true,
+                                        events,
+                                        &system_plan,
+                                    )?;
+                                } else {
+                                    // Elevate before inspecting system state. The worker
+                                    // builds and applies its plan under the same token,
+                                    // so --all requests UAC before potentially slow
+                                    // WinGet/AppX inventory and prompts only once.
+                                    system_result = apply_system(
+                                        &effective_document,
+                                        &resolved.context,
+                                        &plugins_dir,
+                                        &plugins,
+                                        false,
+                                        events,
+                                        &Value::Null,
+                                    )?;
+                                }
+                            }
+                            ApplyStep::User => {
+                                if elevated {
+                                    user_result = run_user_unelevated(
+                                        &effective_document,
+                                        &resolved.context,
+                                        &plugins_dir,
+                                        events,
+                                        WorkerOperation::Apply,
+                                        vec![],
+                                    )?;
+                                    continue;
+                                }
+                                // The system postconditions are already established, so
+                                // user planning observes final machine state directly.
+                                let user_plan = engine::plan_with_prior_operations(
+                                    &effective_document,
+                                    &plugins,
+                                    engine::Scope::UserCurrent,
+                                    &resolved.context,
+                                    events,
+                                    &[],
+                                )?;
+                                engine::validate_plan_sequence(&[&user_plan])?;
+                                user_result = engine::apply_plan(
+                                    &effective_document,
+                                    &plugins,
+                                    engine::Scope::UserCurrent,
+                                    &resolved.context,
+                                    events,
+                                    &user_plan,
+                                )?;
+                            }
                         }
                     }
-                    ApplyStep::User => {
-                        if elevated {
-                            user_result = run_user_unelevated(
-                                &effective_document,
-                                &resolved.context,
-                                &plugins_dir,
-                                &mut events,
-                                WorkerOperation::Apply,
-                                vec![],
-                            )?;
-                            continue;
-                        }
-                        // The system postconditions are already established, so
-                        // user planning observes final machine state directly.
-                        let user_plan = engine::plan_with_prior_operations(
-                            &effective_document,
-                            &plugins,
-                            engine::Scope::UserCurrent,
-                            &resolved.context,
-                            &mut events,
-                            &[],
-                        )?;
-                        engine::validate_plan_sequence(&[&user_plan])?;
-                        user_result = engine::apply_plan(
-                            &effective_document,
-                            &plugins,
-                            engine::Scope::UserCurrent,
-                            &resolved.context,
-                            &mut events,
-                            &user_plan,
-                        )?;
-                    }
-                }
-            }
-            let restart_required = engine::system_restart_required(&system_result)
-                || engine::system_restart_required(&user_result);
-            events.emit(
-                "operation_completed",
-                operation_payload(
-                    "apply",
-                    Some(json!({ "user": user_result, "system": system_result })),
-                ),
-            );
+                    let restart_required = engine::system_restart_required(&system_result)
+                        || engine::system_restart_required(&user_result);
+                    Ok((
+                        restart_required,
+                        Some(json!({ "user": user_result, "system": system_result })),
+                    ))
+                })?;
             if restart_required {
                 events.emit(
                     "restart_required",
@@ -536,6 +582,42 @@ fn scope_steps(all: bool, system: bool, user: bool, elevated: bool) -> Vec<Apply
     } else {
         vec![ApplyStep::System, ApplyStep::User]
     }
+}
+
+fn validation_steps(
+    document: &Value,
+    plugins: &[plugin::Plugin],
+    elevated: bool,
+) -> Vec<ValidationStep> {
+    let mut steps = Vec::new();
+    let user = document
+        .pointer("/users/current")
+        .is_some_and(|scope| configured_plugin_exists(scope, plugins, plugin::Placement::User));
+    if user {
+        steps.push(if elevated {
+            ValidationStep::UserWorker
+        } else {
+            ValidationStep::UserLocal
+        });
+    }
+    let system = document
+        .get("system")
+        .is_some_and(|scope| configured_plugin_exists(scope, plugins, plugin::Placement::System));
+    if system {
+        steps.push(ValidationStep::SystemLocal);
+    }
+    steps
+}
+
+fn configured_plugin_exists(
+    scope: &Value,
+    plugins: &[plugin::Plugin],
+    placement: plugin::Placement,
+) -> bool {
+    plugins.iter().any(|plugin| {
+        plugin.supports(placement)
+            && plugin::configuration_at_path(scope, &plugin.manifest.path).is_some()
+    })
 }
 
 fn apply_system(
@@ -641,29 +723,25 @@ fn run_elevated(payload: String) -> Result<bool> {
     let request: ElevatedRequest = serde_json::from_slice(&bytes)?;
     let mut events = EventEmitter::capture_only(&request.capture_path)
         .context("failed to open elevated output capture")?;
-    let result = run_elevated_request(&request, &mut events).and_then(|result| {
-        std::fs::write(&request.result_path, serde_json::to_vec(&result)?)
-            .context("failed to return elevated execution result")?;
-        Ok(match request.operation {
-            WorkerOperation::Plan => engine::system_restart_pending(&result),
-            WorkerOperation::Apply => engine::system_restart_required(&result),
-        })
-    });
-    if let Err(error) = &result {
-        events.emit(
-            "operation_failed",
-            json!({ "diagnostic": { "severity": "error", "code": "execution.elevated_worker.failed", "message": format!("{error:#}") } }),
-        );
-    }
-    result
+    events.run_operation(
+        request.operation.name(),
+        "execution.elevated_worker.failed",
+        |events| {
+            let result = run_elevated_request(&request, events)?;
+            std::fs::write(&request.result_path, serde_json::to_vec(&result)?)
+                .context("failed to return elevated execution result")?;
+            let restart_required = request.operation.restart_required(&result);
+            Ok((restart_required, Some(result)))
+        },
+    )
 }
 
 fn run_elevated_request(request: &ElevatedRequest, events: &mut EventEmitter) -> Result<Value> {
-    let operation = match request.operation {
-        WorkerOperation::Plan => "plan",
-        WorkerOperation::Apply => "apply",
+    let apply = match request.operation {
+        WorkerOperation::Validate => bail!("the system worker does not support validation"),
+        WorkerOperation::Plan => false,
+        WorkerOperation::Apply => true,
     };
-    events.emit("operation_started", operation_payload(operation, None));
     let plugins = plugin::discover(&request.plugins_dir)?;
     let document = json!({ "version": 1, "system": request.system.clone() });
     engine::validate_document(&document, &plugins)?;
@@ -679,21 +757,18 @@ fn run_elevated_request(request: &ElevatedRequest, events: &mut EventEmitter) ->
         request.plan.clone()
     };
     engine::validate_plan_sequence(&[&plan])?;
-    let result = match request.operation {
-        WorkerOperation::Plan => plan,
-        WorkerOperation::Apply => engine::apply_plan(
+    let result = if apply {
+        engine::apply_plan(
             &document,
             &plugins,
             engine::Scope::System,
             &request.device,
             events,
             &plan,
-        )?,
+        )?
+    } else {
+        plan
     };
-    events.emit(
-        "operation_completed",
-        operation_payload(operation, Some(result.clone())),
-    );
     Ok(result)
 }
 
@@ -707,39 +782,45 @@ fn run_user(request_path: &std::path::Path) -> Result<bool> {
     }
     let mut events = EventEmitter::capture_only(&request.capture_path)
         .context("failed to open current-user output capture")?;
-    let result = run_user_request(&request, &mut events).and_then(|result| {
-        std::fs::write(&request.result_path, serde_json::to_vec(&result)?)
-            .context("failed to return current-user execution result")?;
-        Ok(match request.operation {
-            WorkerOperation::Plan => engine::system_restart_pending(&result),
-            WorkerOperation::Apply => engine::system_restart_required(&result),
-        })
-    });
-    if let Err(error) = &result {
-        events.emit(
-            "operation_failed",
-            json!({ "diagnostic": { "severity": "error", "code": "execution.user_worker.failed", "message": format!("{error:#}") } }),
-        );
+    let result = events.run_operation(
+        request.operation.name(),
+        "execution.user_worker.failed",
+        |events| {
+            let result = run_user_request(&request, events)?;
+            std::fs::write(&request.result_path, serde_json::to_vec(&result)?)
+                .context("failed to return current-user execution result")?;
+            let restart_required = request.operation.restart_required(&result);
+            let status = if restart_required {
+                powershell::REBOOT_REQUIRED_EXIT_CODE
+            } else {
+                0
+            };
+            std::fs::write(&request.status_path, status.to_string())
+                .context("failed to return current-user worker status")?;
+            Ok((restart_required, Some(result)))
+        },
+    );
+    if result.is_err() {
+        std::fs::write(&request.status_path, "1")
+            .context("failed to return current-user worker failure status")?;
     }
-    let status = match &result {
-        Ok(true) => powershell::REBOOT_REQUIRED_EXIT_CODE,
-        Ok(false) => 0,
-        Err(_) => 1,
-    };
-    std::fs::write(&request.status_path, status.to_string())
-        .context("failed to return current-user worker status")?;
     result
 }
 
 fn run_user_request(request: &UserRequest, events: &mut EventEmitter) -> Result<Value> {
-    let operation = match request.operation {
-        WorkerOperation::Plan => "plan",
-        WorkerOperation::Apply => "apply",
-    };
-    events.emit("operation_started", operation_payload(operation, None));
     let plugins = plugin::discover(&request.plugins_dir)?;
     let document = json!({ "version": 1, "users": { "current": request.user.clone() } });
     engine::validate_document(&document, &plugins)?;
+    if matches!(request.operation, WorkerOperation::Validate) {
+        engine::validate_plugins(
+            &document,
+            &plugins,
+            &[engine::Scope::UserCurrent],
+            &request.device,
+            events,
+        )?;
+        return Ok(json!({ "scope": "users.current", "valid": true }));
+    }
     let plan = engine::plan_with_prior_operations(
         &document,
         &plugins,
@@ -752,6 +833,7 @@ fn run_user_request(request: &UserRequest, events: &mut EventEmitter) -> Result<
         engine::validate_plan_sequence(&[&plan])?;
     }
     let result = match request.operation {
+        WorkerOperation::Validate => unreachable!("validation returned before planning"),
         WorkerOperation::Plan => plan,
         WorkerOperation::Apply => engine::apply_plan(
             &document,
@@ -762,16 +844,28 @@ fn run_user_request(request: &UserRequest, events: &mut EventEmitter) -> Result<
             &plan,
         )?,
     };
-    events.emit(
-        "operation_completed",
-        operation_payload(operation, Some(result.clone())),
-    );
     Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn validation_plugin(name: &str, path: &str, placement: plugin::Placement) -> plugin::Plugin {
+        plugin::Plugin {
+            directory: PathBuf::new(),
+            manifest: plugin::Manifest {
+                protocol_version: plugin::PROTOCOL_VERSION,
+                name: name.into(),
+                path: path.into(),
+                placements: [placement].into_iter().collect(),
+                entrypoint: "plugin.ps1".into(),
+                schema: "schema.json".into(),
+                requires: plugin::Requirements::default(),
+            },
+            schema: json!({ "type": "object" }),
+        }
+    }
 
     #[test]
     fn default_scope_is_user_only_when_unelevated() {
@@ -800,6 +894,106 @@ mod tests {
             scope_steps(true, false, false, false),
             vec![ApplyStep::System, ApplyStep::User]
         );
+    }
+
+    #[test]
+    fn elevated_system_only_validation_does_not_require_user_worker() {
+        let plugins = vec![validation_plugin(
+            "system-feature",
+            "system_feature",
+            plugin::Placement::System,
+        )];
+        assert_eq!(
+            validation_steps(
+                &json!({ "system": { "system_feature": {} } }),
+                &plugins,
+                true
+            ),
+            vec![ValidationStep::SystemLocal]
+        );
+    }
+
+    #[test]
+    fn elevated_user_only_validation_uses_limited_worker() {
+        let plugins = vec![validation_plugin(
+            "user-feature",
+            "user_feature",
+            plugin::Placement::User,
+        )];
+        assert_eq!(
+            validation_steps(
+                &json!({ "users": { "current": { "user_feature": {} } } }),
+                &plugins,
+                true
+            ),
+            vec![ValidationStep::UserWorker]
+        );
+    }
+
+    #[test]
+    fn elevated_validation_preserves_user_before_system_order() {
+        let plugins = vec![
+            validation_plugin(
+                "system-feature",
+                "system_feature",
+                plugin::Placement::System,
+            ),
+            validation_plugin("user-feature", "user_feature", plugin::Placement::User),
+        ];
+        assert_eq!(
+            validation_steps(
+                &json!({
+                    "system": { "system_feature": {} },
+                    "users": { "current": { "user_feature": {} } }
+                }),
+                &plugins,
+                true
+            ),
+            vec![ValidationStep::UserWorker, ValidationStep::SystemLocal]
+        );
+    }
+
+    #[test]
+    fn validation_with_no_configured_plugins_has_no_steps() {
+        let plugins = vec![
+            validation_plugin(
+                "system-feature",
+                "system_feature",
+                plugin::Placement::System,
+            ),
+            validation_plugin("user-feature", "user_feature", plugin::Placement::User),
+        ];
+        assert!(
+            validation_steps(
+                &json!({ "system": {}, "users": { "current": {} } }),
+                &plugins,
+                true
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn unelevated_user_validation_runs_locally() {
+        let plugins = vec![validation_plugin(
+            "user-feature",
+            "user_feature",
+            plugin::Placement::User,
+        )];
+        assert_eq!(
+            validation_steps(
+                &json!({ "users": { "current": { "user_feature": {} } } }),
+                &plugins,
+                false
+            ),
+            vec![ValidationStep::UserLocal]
+        );
+    }
+
+    #[test]
+    fn validation_worker_never_reports_a_restart() {
+        assert_eq!(WorkerOperation::Validate.name(), "validate");
+        assert!(!WorkerOperation::Validate.restart_required(&json!({})));
     }
 
     #[test]
