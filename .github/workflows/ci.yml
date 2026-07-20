@@ -98,8 +98,11 @@ jobs:
               throw 'winix-cfg.schema.json is not current; regenerate it and commit the result.'
           }
 
-      - name: Validate safe quickstart
-        run: cargo run --locked -- validate examples/quickstart.yaml --output ndjson
+      # The Rust suite validates every checked-in example against the composed
+      # schema. Runtime validation uses a system-only fixture because the hosted
+      # runner's elevated desktop is intentionally rejected for user placement.
+      - name: Validate system smoke fixture
+        run: cargo run --locked -- validate tests/fixtures/system-plan-smoke.yaml --output ndjson
 
       # GitHub-hosted Windows runners use an elevated desktop shell. Winix
       # intentionally refuses user-scoped execution in that environment, so
