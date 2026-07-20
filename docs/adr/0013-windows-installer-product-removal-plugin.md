@@ -12,7 +12,7 @@ OEM AppX applications can have machine-wide MSI companion services that are not 
 
 The system-only `windows-installer` plugin registers at `packages.windows_installer`. Keys are canonical uppercase MSI product codes including braces. The initial implementation supports `state: absent` only.
 
-Planning reads the 64-bit and 32-bit HKLM uninstall registrations. Apply re-observes the product by its semantic product-code identity. If another planned operation already removed it, the uninstall postcondition is satisfied without error. If it remains installed, metadata drift such as a changed display name, version, or registry view does not prevent the desired removal. Apply invokes `msiexec /x <product-code> /qn /norestart` in the elevated system worker, accepts documented success/already-absent/restart-required exit codes, and verifies removal from ARP registration.
+Planning reads the 64-bit and 32-bit HKLM uninstall registrations. Apply first re-observes every queued product by its semantic product-code identity and requires the complete registered snapshot—including display name, version, and registry view—to match the approved `before` state. An already-absent product or metadata drift makes the queue stale and rejects it before any mutation. Apply also narrows later races with an immediate per-product recheck, invokes `msiexec /x <product-code> /qn /norestart` in the elevated system worker, accepts documented success/already-absent/restart-required exit codes, and verifies the exact absent postcondition. Exit code 3010 is preserved as a required system restart.
 
 The plugin does not use `Win32_Product`, because querying that provider can trigger MSI consistency checks and repairs.
 
