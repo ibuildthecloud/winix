@@ -14,7 +14,7 @@ Winix uses one shared concurrent invocation runner for the read-only `validate` 
 
 System and current-user scopes remain separate phases. Standalone `plan --all` collects the complete system plan before the current-user plan so it can show cross-scope migrations without mutation. `apply --all` instead plans and applies system scope inside the up-front elevated worker, then plans current-user scope against the resulting machine state.
 
-Manifest-required configuration does not serialize planning. After all plans in a scope have returned, Winix resolves provider operation IDs and adds them to each dependent operation's `depends_on` array. Plugin discovery order remains the deterministic apply order, with providers before dependents. Apply is not parallelized.
+Manifest-required configuration does not serialize planning. After all plans in a scope have returned, Winix resolves provider operation IDs and adds them to each dependent operation's `depends_on` array. Plugin discovery order remains the deterministic apply order, with providers before dependents. The aggregated scope plan records that order explicitly in `result_order`; consumers must not infer execution order from JSON object-property order. Apply rejects a plan whose recorded order no longer matches the configured plugin order and is not parallelized.
 
 ## Consequences
 

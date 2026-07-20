@@ -107,7 +107,7 @@ pub fn validate_plugins(
         let validation = responses[task_index]
             .take()
             .expect("every validation worker returned a result")?;
-        if validation.get("valid") != Some(&Value::Bool(true)) {
+        if !validate_validation_response(&plugin.manifest.name, &validation)? {
             bail!(
                 "plugin {} rejected configuration at {}: {}",
                 plugin.manifest.name,
@@ -154,7 +154,13 @@ pub fn plan_with_prior_operations(
 
     let mut results = serde_json::Map::new();
     let Some(scope_root) = scope_root else {
-        return Ok(execution_result("inspect", scope_name, device, results));
+        return Ok(execution_result(
+            "inspect",
+            scope_name,
+            device,
+            Vec::new(),
+            results,
+        ));
     };
     let elevated = powershell::is_elevated()?;
     let mut tasks = Vec::new();
@@ -205,34 +211,24 @@ pub fn plan_with_prior_operations(
         let plan_response = responses[task_index]
             .take()
             .expect("every planning worker returned a result")?;
-        if plan_response.get("success") == Some(&Value::Bool(false)) {
+        if !validate_plan_response(&plugin.manifest.name, &plan_response)? {
             let message = plugin_failure_message(&plan_response);
             bail!(
                 "plugin {} could not apply configuration:\n{message}",
                 plugin.manifest.name
             );
         }
-        let operations = plan_response
-            .get("operations")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "plugin {} did not return an operations array during planning",
-                    plugin.manifest.name
-                )
-            })?;
-        validate_operation_ids(&plugin.manifest.name, operations)?;
         results.insert(task.absolute_path.clone(), plan_response);
     }
 
-    for task in tasks {
+    for task in &tasks {
         let plugin = &plugins[task.plugin_index];
-        let dependency_ids = required_operation_ids(plugin, plugins, &results);
+        let dependency_ids = required_operation_ids(task.plugin_index, plugins, &tasks, &results);
         let plan_response = results
             .get_mut(&task.absolute_path)
             .expect("planned result was inserted");
         add_operation_dependencies(plan_response, &dependency_ids)?;
-        validate_operation_ids(
+        validate_operations(
             &plugin.manifest.name,
             plan_response["operations"]
                 .as_array()
@@ -240,7 +236,14 @@ pub fn plan_with_prior_operations(
         )?;
     }
 
-    Ok(execution_result("inspect", scope_name, device, results))
+    let result_order = tasks.into_iter().map(|task| task.absolute_path).collect();
+    Ok(execution_result(
+        "inspect",
+        scope_name,
+        device,
+        result_order,
+        results,
+    ))
 }
 
 struct PluginTask {
@@ -317,36 +320,67 @@ fn invoke_plugin_tasks(
                 Ok(PluginMessage::Completed(task_index, result)) => {
                     let task = &tasks[task_index];
                     let plugin = &plugins[task.plugin_index];
-                    if let Ok(response) = &result {
-                        if operation == "plan"
-                            && response.get("success") == Some(&Value::Bool(false))
-                        {
-                            let message = plugin_failure_message(response);
-                            events.emit_plugin(
-                                "plugin_failed",
-                                &plugin.manifest.name,
-                                &task.absolute_path,
-                                task.scope_name,
-                                device,
-                                json!({
-                                    "operation": operation,
-                                    "diagnostic": {
-                                        "code": response["error"]["code"],
-                                        "message": message
-                                    }
-                                }),
-                            );
-                        } else {
-                            events.emit_plugin(
-                                "plugin_completed",
-                                &plugin.manifest.name,
-                                &task.absolute_path,
-                                task.scope_name,
-                                device,
-                                json!({ "operation": operation, "result": response }),
-                            );
+                    let result = match result {
+                        Ok(response) => {
+                            let accepted = match operation {
+                                "validate" => {
+                                    validate_validation_response(&plugin.manifest.name, &response)
+                                }
+                                "plan" => validate_plan_response(&plugin.manifest.name, &response),
+                                _ => Ok(true),
+                            };
+                            match accepted {
+                                Ok(false) => {
+                                    let message = plugin_failure_message(&response);
+                                    events.emit_plugin(
+                                        "plugin_failed",
+                                        &plugin.manifest.name,
+                                        &task.absolute_path,
+                                        task.scope_name,
+                                        device,
+                                        json!({
+                                            "operation": operation,
+                                            "diagnostic": {
+                                                "code": response["error"]["code"],
+                                                "message": message
+                                            }
+                                        }),
+                                    );
+                                    Ok(response)
+                                }
+                                Ok(true) => {
+                                    events.emit_plugin(
+                                        "plugin_completed",
+                                        &plugin.manifest.name,
+                                        &task.absolute_path,
+                                        task.scope_name,
+                                        device,
+                                        json!({ "operation": operation, "result": response }),
+                                    );
+                                    Ok(response)
+                                }
+                                Err(error) => {
+                                    events.emit_plugin(
+                                        "plugin_failed",
+                                        &plugin.manifest.name,
+                                        &task.absolute_path,
+                                        task.scope_name,
+                                        device,
+                                        json!({
+                                            "operation": operation,
+                                            "diagnostic": {
+                                                "severity": "error",
+                                                "code": "plugin.protocol.invalid_result",
+                                                "message": format!("{error:#}")
+                                            }
+                                        }),
+                                    );
+                                    Err(error)
+                                }
+                            }
                         }
-                    }
+                        Err(error) => Err(error),
+                    };
                     responses[task_index] = Some(result);
                     remaining -= 1;
                 }
@@ -358,23 +392,32 @@ fn invoke_plugin_tasks(
 }
 
 fn required_operation_ids(
-    plugin: &Plugin,
+    plugin_index: usize,
     plugins: &[Plugin],
+    tasks: &[PluginTask],
     results: &serde_json::Map<String, Value>,
 ) -> Vec<String> {
+    let plugin = &plugins[plugin_index];
     let Some(fragment) = plugin.manifest.requires.configuration.as_ref() else {
         return Vec::new();
     };
-    plugins
+    tasks
         .iter()
-        .filter(|candidate| {
-            plugin::configuration_at_path(fragment, &candidate.manifest.path).is_some()
+        .filter(|candidate_task| {
+            candidate_task.plugin_index != plugin_index
+                && plugin::configuration_at_path(
+                    fragment,
+                    &plugins[candidate_task.plugin_index].manifest.path,
+                )
+                .is_some()
         })
-        .flat_map(|candidate| {
-            results
-                .iter()
-                .filter(move |(path, _)| path.ends_with(&format!(".{}", candidate.manifest.path)))
-                .flat_map(|(_, result)| result["operations"].as_array().into_iter().flatten())
+        .filter_map(|candidate_task| results.get(&candidate_task.absolute_path))
+        .flat_map(|result| {
+            result
+                .get("operations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
         })
         .filter_map(|operation| operation["id"].as_str().map(str::to_owned))
         .collect()
@@ -441,16 +484,24 @@ pub fn apply_plan(
     let planned_results = plan["results"]
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("the supplied plan has no plugin results"))?;
+    let planned_result_order = ordered_result_paths(plan)?;
     let mut results = planned_results.clone();
     let Some(scope_root) = scope_root else {
         if planned_results.is_empty() {
-            return Ok(execution_result("apply", scope_name, device, results));
+            return Ok(execution_result(
+                "apply",
+                scope_name,
+                device,
+                Vec::new(),
+                results,
+            ));
         }
         bail!("the supplied plan contains operations for a missing configuration scope");
     };
 
     let mut prepared = Vec::new();
     let mut expected_paths = std::collections::HashSet::new();
+    let mut expected_order = Vec::new();
     for (plugin_index, plugin) in plugins.iter().enumerate() {
         if !plugin.supports(placement) {
             continue;
@@ -468,6 +519,7 @@ pub fn apply_plan(
             plugin.manifest.path
         );
         expected_paths.insert(absolute_path.clone());
+        expected_order.push(absolute_path.clone());
         let plan_response = planned_results
             .get(&absolute_path)
             .cloned()
@@ -475,7 +527,7 @@ pub fn apply_plan(
         let operations = plan_response["operations"].as_array().ok_or_else(|| {
             anyhow::anyhow!("the supplied plan has no operations for {absolute_path}")
         })?;
-        validate_operation_ids(&plugin.manifest.name, operations)?;
+        validate_operations(&plugin.manifest.name, operations)?;
         let request = json!({
             "protocol_version": plugin::PROTOCOL_VERSION,
             "plugin": plugin.manifest.name,
@@ -499,19 +551,89 @@ pub fn apply_plan(
     {
         bail!("the supplied plan contains a plugin path not present in configuration");
     }
+    if !planned_result_order
+        .iter()
+        .copied()
+        .eq(expected_order.iter().map(String::as_str))
+    {
+        bail!("the supplied plan plugin order does not match the current configuration");
+    }
     apply_prepared(plugins, scope_name, device, events, prepared, &mut results)?;
-    Ok(execution_result("apply", scope_name, device, results))
+    Ok(execution_result(
+        "apply",
+        scope_name,
+        device,
+        expected_order,
+        results,
+    ))
 }
 
 pub fn planned_operations(plan: &Value) -> Vec<Value> {
-    plan["results"]
-        .as_object()
+    planned_operations_checked(plan).unwrap_or_default()
+}
+
+fn planned_operations_checked(plan: &Value) -> Result<Vec<Value>> {
+    Ok(ordered_plan_results(plan)?
         .into_iter()
-        .flat_map(|results| results.values())
         .filter_map(|result| result["operations"].as_array())
         .flatten()
         .cloned()
-        .collect()
+        .collect())
+}
+
+fn ordered_plan_results(plan: &Value) -> Result<Vec<&Value>> {
+    if plan.is_null() {
+        return Ok(Vec::new());
+    }
+    let results = plan["results"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("the supplied plan has no plugin results"))?;
+    let paths = ordered_result_paths(plan)?;
+    Ok(paths
+        .into_iter()
+        .map(|path| {
+            results
+                .get(path)
+                .expect("ordered result paths were validated against plan results")
+        })
+        .collect())
+}
+
+fn ordered_result_paths(plan: &Value) -> Result<Vec<&str>> {
+    if plan.is_null() {
+        return Ok(Vec::new());
+    }
+    let results = plan["results"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("the supplied plan has no plugin results"))?;
+    let Some(order) = plan.get("result_order") else {
+        if results.is_empty() {
+            return Ok(Vec::new());
+        }
+        bail!("the supplied plan has no result_order array");
+    };
+    let order = order
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("the supplied plan has a non-array result_order"))?;
+    if order.len() != results.len() {
+        bail!("the supplied plan result_order does not cover every plugin result");
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    let mut paths = Vec::with_capacity(order.len());
+    for path in order {
+        let path = path.as_str().ok_or_else(|| {
+            anyhow::anyhow!("the supplied plan has a non-string result_order path")
+        })?;
+        if !seen.insert(path) {
+            bail!("the supplied plan repeats plugin path {path:?} in result_order");
+        }
+        if !results.contains_key(path) {
+            bail!("the supplied plan result_order references missing plugin path {path:?}");
+        }
+        paths.push(path);
+    }
+    Ok(paths)
 }
 
 pub fn system_restart_required(result: &Value) -> bool {
@@ -546,14 +668,15 @@ pub fn system_restart_pending(result: &Value) -> bool {
 
 pub fn validate_plan_sequence(plans: &[&Value]) -> Result<()> {
     let mut seen = std::collections::HashSet::new();
-    for operation in plans
-        .iter()
-        .flat_map(|plan| planned_operations(plan).into_iter())
-    {
+    let mut operations = Vec::new();
+    for plan in plans {
+        operations.extend(planned_operations_checked(plan)?);
+    }
+    for operation in operations {
         let id = operation["id"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("planned operation is missing a string id"))?;
-        if !seen.insert(id.to_owned()) {
+        if seen.contains(id) {
             bail!("planned operation ID {id:?} is not globally unique");
         }
         if let Some(dependencies) = operation["data"]["depends_on"].as_array() {
@@ -568,6 +691,7 @@ pub fn validate_plan_sequence(plans: &[&Value]) -> Result<()> {
                 }
             }
         }
+        seen.insert(id.to_owned());
     }
     Ok(())
 }
@@ -611,7 +735,7 @@ fn apply_prepared(
             scope_name,
             device,
         )?;
-        if response.get("success") == Some(&Value::Bool(false)) {
+        if !validate_apply_response(&plugin.manifest.name, &response)? {
             let message = plugin_failure_message(&response);
             events.emit_plugin(
                 "plugin_failed",
@@ -678,10 +802,186 @@ fn apply_prepared(
     Ok(())
 }
 
+fn validate_validation_response(plugin_name: &str, response: &Value) -> Result<bool> {
+    let response = response.as_object().ok_or_else(|| {
+        anyhow::anyhow!("plugin {plugin_name} returned a non-object validation response")
+    })?;
+    let valid = response
+        .get("valid")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "plugin {plugin_name} returned validation without a boolean valid field"
+            )
+        })?;
+    require_array_field(plugin_name, "validation", response, "diagnostics")?;
+    Ok(valid)
+}
+
+fn validate_plan_response(plugin_name: &str, response: &Value) -> Result<bool> {
+    let response = response.as_object().ok_or_else(|| {
+        anyhow::anyhow!("plugin {plugin_name} returned a non-object plan response")
+    })?;
+    let success = require_boolean_field(plugin_name, "plan", response, "success")?;
+    if !success {
+        return Ok(false);
+    }
+    if response.get("changed") != Some(&Value::Bool(false)) {
+        bail!("plugin {plugin_name} returned a successful plan without changed=false");
+    }
+    let operations = require_array_field(plugin_name, "plan", response, "operations")?;
+    validate_operations(plugin_name, operations)?;
+    require_array_field(plugin_name, "plan", response, "diagnostics")?;
+    validate_restart_required(plugin_name, "plan", response)?;
+    Ok(true)
+}
+
+fn validate_apply_response(plugin_name: &str, response: &Value) -> Result<bool> {
+    let response = response.as_object().ok_or_else(|| {
+        anyhow::anyhow!("plugin {plugin_name} returned a non-object apply response")
+    })?;
+    let success = require_boolean_field(plugin_name, "apply", response, "success")?;
+    if !success {
+        return Ok(false);
+    }
+    require_boolean_field(plugin_name, "apply", response, "changed")?;
+    let operations = require_array_field(plugin_name, "apply", response, "operations")?;
+    validate_operations(plugin_name, operations)?;
+    let applied = require_array_field(plugin_name, "apply", response, "applied_operation_ids")?;
+    for (index, id) in applied.iter().enumerate() {
+        require_nonempty_string(plugin_name, "apply", "applied operation ID", index, id)?;
+    }
+    require_array_field(plugin_name, "apply", response, "diagnostics")?;
+    validate_restart_required(plugin_name, "apply", response)?;
+    Ok(true)
+}
+
+fn require_boolean_field(
+    plugin_name: &str,
+    phase: &str,
+    response: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<bool> {
+    response.get(field).and_then(Value::as_bool).ok_or_else(|| {
+        anyhow::anyhow!("plugin {plugin_name} returned {phase} without a boolean {field} field")
+    })
+}
+
+fn require_array_field<'a>(
+    plugin_name: &str,
+    phase: &str,
+    response: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<&'a Vec<Value>> {
+    response
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} returned {phase} without an array {field} field")
+        })
+}
+
+fn validate_restart_required(
+    plugin_name: &str,
+    phase: &str,
+    response: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    let restart = response
+        .get("restart_required")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "plugin {plugin_name} returned {phase} without an object restart_required field"
+            )
+        })?;
+    require_boolean_field(plugin_name, phase, restart, "explorer")?;
+    require_boolean_field(plugin_name, phase, restart, "system")?;
+    Ok(())
+}
+
+fn validate_operations(plugin_name: &str, operations: &[Value]) -> Result<()> {
+    for (index, operation) in operations.iter().enumerate() {
+        let operation = operation.as_object().ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} returned non-object operation at index {index}")
+        })?;
+        let id = operation.get("id").ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} operation at index {index} is missing id")
+        })?;
+        require_nonempty_string(plugin_name, "operation", "id", index, id)?;
+        let action = operation.get("action").ok_or_else(|| {
+            anyhow::anyhow!("plugin {plugin_name} operation at index {index} is missing action")
+        })?;
+        require_nonempty_string(plugin_name, "operation", "action", index, action)?;
+
+        let resource = operation
+            .get("resource")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "plugin {plugin_name} operation at index {index} has no resource object"
+                )
+            })?;
+        for field in ["type", "id"] {
+            let value = resource.get(field).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "plugin {plugin_name} operation at index {index} resource is missing {field}"
+                )
+            })?;
+            require_nonempty_string(plugin_name, "operation resource", field, index, value)?;
+        }
+
+        if !operation.contains_key("before") {
+            bail!("plugin {plugin_name} operation at index {index} is missing before");
+        }
+        if !operation.contains_key("after") {
+            bail!("plugin {plugin_name} operation at index {index} is missing after");
+        }
+        let data = operation
+            .get("data")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "plugin {plugin_name} operation at index {index} has no data object"
+                )
+            })?;
+        if let Some(dependencies) = data.get("depends_on") {
+            let dependencies = dependencies.as_array().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "plugin {plugin_name} operation at index {index} has non-array depends_on"
+                )
+            })?;
+            for (dependency_index, dependency) in dependencies.iter().enumerate() {
+                require_nonempty_string(
+                    plugin_name,
+                    "operation dependency",
+                    "depends_on",
+                    dependency_index,
+                    dependency,
+                )?;
+            }
+        }
+    }
+    validate_operation_ids(plugin_name, operations)
+}
+
+fn require_nonempty_string(
+    plugin_name: &str,
+    phase: &str,
+    field: &str,
+    index: usize,
+    value: &Value,
+) -> Result<()> {
+    if value.as_str().is_some_and(|value| !value.trim().is_empty()) {
+        Ok(())
+    } else {
+        bail!("plugin {plugin_name} returned {phase} {index} without a nonempty string {field}")
+    }
+}
+
 fn validate_operation_ids(plugin_name: &str, operations: &[Value]) -> Result<()> {
     let ids = operation_ids(operations);
-    if ids.len() != operations.len() {
-        bail!("plugin {plugin_name} returned an operation without a string id");
+    if ids.len() != operations.len() || ids.iter().any(|id| id.trim().is_empty()) {
+        bail!("plugin {plugin_name} returned an operation without a nonempty string id");
     }
     let unique = ids.iter().collect::<std::collections::HashSet<_>>();
     if unique.len() != ids.len() {
@@ -725,6 +1025,7 @@ fn execution_result(
     mode: &str,
     scope: &str,
     device: &DeviceContext,
+    result_order: Vec<String>,
     results: serde_json::Map<String, Value>,
 ) -> Value {
     json!({
@@ -733,18 +1034,108 @@ fn execution_result(
         "scope": scope,
         "device": device.name,
         "device_overlay": device.overlay,
+        "result_order": result_order,
         "results": results
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+
+    use serde_json::{Value, json};
+
+    use crate::plugin::{Manifest, PROTOCOL_VERSION, Requirements};
 
     use super::{
-        add_operation_dependencies, operation_ids, plugin_failure_message, system_restart_pending,
-        system_restart_required, validate_operation_ids, validate_plan_sequence,
+        Placement, Plugin, PluginTask, add_operation_dependencies, operation_ids,
+        planned_operations, plugin_failure_message, required_operation_ids, system_restart_pending,
+        system_restart_required, validate_apply_response, validate_operation_ids,
+        validate_plan_response, validate_plan_sequence, validate_validation_response,
     };
+
+    fn valid_operation() -> Value {
+        json!({
+            "id": "example.widget.install",
+            "action": "install",
+            "resource": {
+                "type": "example.widget",
+                "id": "Sample",
+                "provider_extension": true
+            },
+            "before": null,
+            "after": { "installed": true },
+            "data": {
+                "depends_on": [],
+                "provider_extension": { "version": "1.2.3" }
+            }
+        })
+    }
+
+    fn valid_plan_response() -> Value {
+        json!({
+            "success": true,
+            "changed": false,
+            "state": { "provider_extension": true },
+            "operations": [valid_operation()],
+            "diagnostics": [],
+            "restart_required": { "explorer": false, "system": false }
+        })
+    }
+
+    fn valid_apply_response() -> Value {
+        json!({
+            "success": true,
+            "changed": true,
+            "state": { "provider_extension": true },
+            "operations": [valid_operation()],
+            "applied_operation_ids": ["example.widget.install"],
+            "diagnostics": [],
+            "restart_required": { "explorer": false, "system": false }
+        })
+    }
+
+    fn mutate_json(value: &mut Value, pointer: &str, replacement: Option<Value>) {
+        if let Some(replacement) = replacement {
+            *value.pointer_mut(pointer).expect("test pointer exists") = replacement;
+            return;
+        }
+        let (parent, field) = pointer.rsplit_once('/').expect("test pointer has a field");
+        value
+            .pointer_mut(parent)
+            .and_then(Value::as_object_mut)
+            .expect("test pointer parent is an object")
+            .remove(field);
+    }
+
+    fn test_plugin(name: &str, path: &str, requirement: Option<Value>) -> Plugin {
+        Plugin {
+            directory: PathBuf::new(),
+            manifest: Manifest {
+                protocol_version: PROTOCOL_VERSION,
+                name: name.into(),
+                path: path.into(),
+                placements: BTreeSet::from([Placement::User]),
+                entrypoint: "plugin.ps1".into(),
+                schema: "schema.json".into(),
+                requires: Requirements {
+                    configuration: requirement,
+                    ..Requirements::default()
+                },
+            },
+            schema: json!({ "type": "object" }),
+        }
+    }
+
+    fn test_task(plugin_index: usize, absolute_path: &str) -> PluginTask {
+        PluginTask {
+            plugin_index,
+            absolute_path: absolute_path.into(),
+            scope_name: "user",
+            request: Value::Null,
+        }
+    }
 
     #[test]
     fn plugin_failure_includes_diagnostic_path_and_help() {
@@ -778,20 +1169,311 @@ mod tests {
     }
 
     #[test]
+    fn validation_response_requires_boolean_valid_and_diagnostics_array() {
+        assert!(
+            validate_validation_response(
+                "test",
+                &json!({ "valid": true, "diagnostics": [], "extension": {} }),
+            )
+            .unwrap()
+        );
+        assert!(
+            !validate_validation_response("test", &json!({ "valid": false, "diagnostics": [] }),)
+                .unwrap()
+        );
+        assert!(validate_validation_response("test", &json!([])).is_err());
+
+        let cases = vec![
+            ("missing valid", "/valid", None),
+            ("null valid", "/valid", Some(Value::Null)),
+            ("string valid", "/valid", Some(json!("true"))),
+            ("missing diagnostics", "/diagnostics", None),
+            ("object diagnostics", "/diagnostics", Some(json!({}))),
+        ];
+        for (name, pointer, replacement) in cases {
+            let mut response = json!({ "valid": true, "diagnostics": [] });
+            mutate_json(&mut response, pointer, replacement);
+            assert!(
+                validate_validation_response("test", &response).is_err(),
+                "accepted malformed validation response: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn successful_plan_response_rejects_malformed_core_fields() {
+        assert!(validate_plan_response("test", &valid_plan_response()).unwrap());
+        assert!(!validate_plan_response("test", &json!({ "success": false })).unwrap());
+        assert!(validate_plan_response("test", &json!([])).is_err());
+
+        let duplicate = valid_operation();
+        let cases = vec![
+            ("missing success", "/success", None),
+            ("null success", "/success", Some(Value::Null)),
+            ("string success", "/success", Some(json!("true"))),
+            ("missing changed", "/changed", None),
+            ("changed true", "/changed", Some(json!(true))),
+            ("null changed", "/changed", Some(Value::Null)),
+            ("missing operations", "/operations", None),
+            ("object operations", "/operations", Some(json!({}))),
+            ("missing diagnostics", "/diagnostics", None),
+            ("object diagnostics", "/diagnostics", Some(json!({}))),
+            ("missing restart", "/restart_required", None),
+            ("array restart", "/restart_required", Some(json!([]))),
+            (
+                "missing explorer restart",
+                "/restart_required/explorer",
+                None,
+            ),
+            (
+                "string explorer restart",
+                "/restart_required/explorer",
+                Some(json!("false")),
+            ),
+            ("missing system restart", "/restart_required/system", None),
+            (
+                "numeric system restart",
+                "/restart_required/system",
+                Some(json!(0)),
+            ),
+            ("non-object operation", "/operations/0", Some(json!("bad"))),
+            ("missing id", "/operations/0/id", None),
+            ("empty id", "/operations/0/id", Some(json!(""))),
+            ("blank id", "/operations/0/id", Some(json!("  "))),
+            ("numeric id", "/operations/0/id", Some(json!(1))),
+            ("missing action", "/operations/0/action", None),
+            ("empty action", "/operations/0/action", Some(json!(""))),
+            ("numeric action", "/operations/0/action", Some(json!(1))),
+            ("missing resource", "/operations/0/resource", None),
+            ("array resource", "/operations/0/resource", Some(json!([]))),
+            ("missing resource type", "/operations/0/resource/type", None),
+            (
+                "empty resource type",
+                "/operations/0/resource/type",
+                Some(json!("")),
+            ),
+            ("missing resource id", "/operations/0/resource/id", None),
+            (
+                "numeric resource id",
+                "/operations/0/resource/id",
+                Some(json!(1)),
+            ),
+            ("missing before", "/operations/0/before", None),
+            ("missing after", "/operations/0/after", None),
+            ("missing data", "/operations/0/data", None),
+            ("array data", "/operations/0/data", Some(json!([]))),
+            (
+                "null dependencies",
+                "/operations/0/data/depends_on",
+                Some(Value::Null),
+            ),
+            (
+                "string dependencies",
+                "/operations/0/data/depends_on",
+                Some(json!("provider")),
+            ),
+            (
+                "empty dependency",
+                "/operations/0/data/depends_on",
+                Some(json!([""])),
+            ),
+            (
+                "numeric dependency",
+                "/operations/0/data/depends_on",
+                Some(json!([1])),
+            ),
+            (
+                "duplicate operation id",
+                "/operations",
+                Some(json!([valid_operation(), duplicate])),
+            ),
+        ];
+        for (name, pointer, replacement) in cases {
+            let mut response = valid_plan_response();
+            mutate_json(&mut response, pointer, replacement);
+            assert!(
+                validate_plan_response("test", &response).is_err(),
+                "accepted malformed plan response: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn successful_apply_response_rejects_malformed_core_fields() {
+        assert!(validate_apply_response("test", &valid_apply_response()).unwrap());
+        let mut unchanged = valid_apply_response();
+        unchanged["changed"] = Value::Bool(false);
+        assert!(validate_apply_response("test", &unchanged).unwrap());
+        assert!(!validate_apply_response("test", &json!({ "success": false })).unwrap());
+        assert!(validate_apply_response("test", &json!([])).is_err());
+
+        let cases = vec![
+            ("missing success", "/success", None),
+            ("null success", "/success", Some(Value::Null)),
+            ("string success", "/success", Some(json!("true"))),
+            ("missing changed", "/changed", None),
+            ("null changed", "/changed", Some(Value::Null)),
+            ("string changed", "/changed", Some(json!("true"))),
+            ("missing operations", "/operations", None),
+            ("object operations", "/operations", Some(json!({}))),
+            ("missing applied ids", "/applied_operation_ids", None),
+            (
+                "object applied ids",
+                "/applied_operation_ids",
+                Some(json!({})),
+            ),
+            (
+                "empty applied id",
+                "/applied_operation_ids",
+                Some(json!([""])),
+            ),
+            (
+                "numeric applied id",
+                "/applied_operation_ids",
+                Some(json!([1])),
+            ),
+            ("missing diagnostics", "/diagnostics", None),
+            ("object diagnostics", "/diagnostics", Some(json!({}))),
+            ("missing restart", "/restart_required", None),
+            (
+                "null system restart",
+                "/restart_required/system",
+                Some(Value::Null),
+            ),
+            ("operation missing data", "/operations/0/data", None),
+        ];
+        for (name, pointer, replacement) in cases {
+            let mut response = valid_apply_response();
+            mutate_json(&mut response, pointer, replacement);
+            assert!(
+                validate_apply_response("test", &response).is_err(),
+                "accepted malformed apply response: {name}"
+            );
+        }
+    }
+
+    #[test]
     fn global_plan_dependencies_must_reference_earlier_unique_operations() {
-        let first = json!({ "results": { "a": { "operations": [{
-            "id": "system.remove", "data": { "depends_on": [] }
-        }] } } });
-        let second = json!({ "results": { "b": { "operations": [{
-            "id": "user.install", "data": { "depends_on": ["system.remove"] }
-        }] } } });
+        let first = json!({
+            "result_order": ["a"],
+            "results": { "a": { "operations": [{
+                "id": "system.remove", "data": { "depends_on": [] }
+            }] } }
+        });
+        let second = json!({
+            "result_order": ["b"],
+            "results": { "b": { "operations": [{
+                "id": "user.install", "data": { "depends_on": ["system.remove"] }
+            }] } }
+        });
         assert!(validate_plan_sequence(&[&first, &second]).is_ok());
 
-        let missing = json!({ "results": { "b": { "operations": [{
-            "id": "user.install", "data": { "depends_on": ["missing"] }
-        }] } } });
+        let missing = json!({
+            "result_order": ["b"],
+            "results": { "b": { "operations": [{
+                "id": "user.install", "data": { "depends_on": ["missing"] }
+            }] } }
+        });
         assert!(validate_plan_sequence(&[&missing]).is_err());
         assert!(validate_plan_sequence(&[&first, &first]).is_err());
+
+        let self_dependency = json!({
+            "result_order": ["self"],
+            "results": { "self": { "operations": [{
+                "id": "self.configure", "data": { "depends_on": ["self.configure"] }
+            }] } }
+        });
+        assert!(validate_plan_sequence(&[&self_dependency]).is_err());
+    }
+
+    #[test]
+    fn plan_sequence_uses_explicit_task_order_after_reordered_property_round_trip() {
+        let plan = json!({
+            "result_order": ["z.provider", "a.dependent"],
+            "results": {
+                "a.dependent": { "operations": [{
+                    "id": "dependent.install",
+                    "data": { "depends_on": ["provider.install"] }
+                }] },
+                "z.provider": { "operations": [{
+                    "id": "provider.install",
+                    "data": { "depends_on": [] }
+                }] }
+            }
+        });
+        let round_tripped: Value =
+            serde_json::from_str(&serde_json::to_string(&plan).unwrap()).unwrap();
+
+        assert_eq!(
+            round_tripped["results"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["a.dependent", "z.provider"]
+        );
+        assert_eq!(
+            planned_operations(&round_tripped)
+                .iter()
+                .filter_map(|operation| operation["id"].as_str())
+                .collect::<Vec<_>>(),
+            vec!["provider.install", "dependent.install"]
+        );
+        assert!(validate_plan_sequence(&[&round_tripped]).is_ok());
+
+        let mut reversed = round_tripped;
+        reversed["result_order"] = json!(["a.dependent", "z.provider"]);
+        assert!(validate_plan_sequence(&[&reversed]).is_err());
+    }
+
+    #[test]
+    fn dependency_ids_use_exact_task_identity_despite_suffix_collision() {
+        let plugins = vec![
+            test_plugin("provider", "bar", None),
+            test_plugin("suffix-collision", "foo.bar", None),
+            test_plugin("dependent", "dependent", Some(json!({ "bar": {} }))),
+        ];
+        let tasks = vec![
+            test_task(0, "users.current.bar"),
+            test_task(1, "users.current.foo.bar"),
+            test_task(2, "users.current.dependent"),
+        ];
+        let results = json!({
+            "users.current.bar": {
+                "operations": [{ "id": "provider.install" }]
+            },
+            "users.current.foo.bar": {
+                "operations": [{ "id": "collision.install" }]
+            },
+            "users.current.dependent": {
+                "operations": [{ "id": "dependent.install" }]
+            }
+        });
+
+        assert_eq!(
+            required_operation_ids(2, &plugins, &tasks, results.as_object().unwrap()),
+            vec!["provider.install"]
+        );
+    }
+
+    #[test]
+    fn plugin_requirement_never_creates_a_self_dependency() {
+        let plugins = vec![test_plugin(
+            "self-requiring",
+            "feature",
+            Some(json!({ "feature": {} })),
+        )];
+        let tasks = vec![test_task(0, "users.current.feature")];
+        let results = json!({
+            "users.current.feature": {
+                "operations": [{ "id": "feature.configure" }]
+            }
+        });
+
+        assert!(
+            required_operation_ids(0, &plugins, &tasks, results.as_object().unwrap()).is_empty()
+        );
     }
 
     #[test]
