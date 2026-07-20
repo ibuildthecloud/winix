@@ -11,7 +11,7 @@ the documented Windows 11 Home release process.
 
 ## Phase 0 — Safety baseline and repeatable gates
 
-Status: **in progress** — implementation is complete; hosted CI is pending.
+Status: **complete**
 
 - [x] Publish the repository with a safe, reversible Quick Start.
 - [x] Add a pinned Windows CI gate for formatting, warnings-as-errors Clippy,
