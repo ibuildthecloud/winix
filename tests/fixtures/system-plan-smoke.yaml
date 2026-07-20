@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+# GitHub-hosted Windows runners use an elevated desktop shell, which Winix
+# correctly rejects for user placement. This fixture exercises live planning
+# in that environment without applying any change.
+version: 1
+
+system:
+  windows:
+    developer:
+      long_paths: enabled

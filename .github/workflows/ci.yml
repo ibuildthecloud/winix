@@ -95,5 +95,8 @@ jobs:
       - name: Validate safe quickstart
         run: cargo run --locked -- validate examples/quickstart.yaml --output ndjson
 
-      - name: Plan safe quickstart without mutation
-        run: cargo run --locked -- plan examples/quickstart.yaml --user --output trace
+      # GitHub-hosted Windows runners use an elevated desktop shell. Winix
+      # intentionally refuses user-scoped execution in that environment, so
+      # exercise the live plan path with a narrow system-only fixture instead.
+      - name: Plan system smoke fixture without mutation
+        run: cargo run --locked -- plan tests/fixtures/system-plan-smoke.yaml --system --output trace
