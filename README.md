@@ -282,7 +282,8 @@ See [ADR 0001](docs/adr/0001-core-architecture-and-initial-modules.md), [ADR 000
 ## Project information
 
 - Source and issues: [github.com/ibuildthecloud/winix](https://github.com/ibuildthecloud/winix)
-- Quality and security roadmap: [initial quality and security review](docs/reviews/2026-07-20-initial-quality-security-review.md)
+- Living quality and security roadmap: [implementation status](docs/roadmap.md)
+- Review baseline and evidence: [initial quality and security review](docs/reviews/2026-07-20-initial-quality-security-review.md)
 - Release process and support policy: [releasing Winix](docs/releasing.md)
 - Security reports: [security policy](SECURITY.md)
 - License: [MIT](LICENSE)

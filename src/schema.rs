@@ -164,4 +164,19 @@ mod tests {
                 .is_object()
         );
     }
+
+    #[test]
+    fn checked_in_examples_match_the_composed_schema() {
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let plugins = crate::plugin::discover(&repository.join("plugins")).unwrap();
+
+        for relative_path in ["examples/quickstart.yaml", "examples/workstation.yaml"] {
+            let path = repository.join(relative_path);
+            let document = crate::config::load(&path)
+                .unwrap_or_else(|error| panic!("failed to load {relative_path}: {error:#}"));
+            crate::engine::validate_document(&document, &plugins).unwrap_or_else(|error| {
+                panic!("{relative_path} does not match the composed schema: {error:#}")
+            });
+        }
+    }
 }

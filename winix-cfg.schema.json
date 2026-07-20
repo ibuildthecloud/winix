@@ -475,6 +475,15 @@
           "type": "object"
         },
         "description": "System programs removed by stable uninstall-registry identity.",
+        "propertyNames": {
+          "not": {
+            "enum": [
+              ".",
+              ".."
+            ]
+          },
+          "pattern": "^[^\\s\\\\/](?:[^\\\\/]*[^\\s\\\\/])?$"
+        },
         "title": "Add/Remove Programs registrations",
         "type": "object"
       },
