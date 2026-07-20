@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+version: 1
+system:
+  windows:
+    wsl:
+      state: absent

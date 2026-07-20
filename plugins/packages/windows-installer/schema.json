@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows Installer products",
+  "description": "Machine-wide MSI products identified by canonical product code.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Uppercase MSI product code including braces.",
+    "type": "string",
+    "pattern": "^\\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\\}$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": { "const": "absent" }
+    },
+    "required": ["state"],
+    "additionalProperties": false
+  }
+}

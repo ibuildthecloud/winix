@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "File Explorer settings",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "show_file_extensions": { "type": "boolean" },
+    "show_hidden_files": { "type": "boolean" },
+    "show_full_path_in_title_bar": { "type": "boolean" },
+    "launch_to": { "type": "string", "enum": ["home", "this_pc"] },
+    "show_frequent_folders": { "type": "boolean" },
+    "show_recent_files": { "type": "boolean" },
+    "show_cloud_files_in_quick_access": { "type": "boolean" },
+    "show_version_control": { "type": "boolean" },
+    "show_sync_provider_notifications": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

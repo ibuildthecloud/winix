@@ -1,0 +1,13 @@
+{
+  "protocol_version": 2,
+  "name": "powershell-modules",
+  "path": "packages.powershell_modules",
+  "placements": ["system", "user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": {
+    "powershell": ">=7.0",
+    "administrator": false,
+    "commands": ["Get-InstalledPSResource", "Find-PSResource", "Install-PSResource", "Uninstall-PSResource"]
+  }
+}

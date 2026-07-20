@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nerd Fonts",
+  "description": "Nerd Font families installed from official ryanoasis/nerd-fonts release archives.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Exact, case-sensitive Nerd Fonts release asset name, without the .zip suffix (for example JetBrainsMono, FiraCode, or Hack).",
+    "type": "string",
+    "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": {
+        "description": "Desired font family state. Omission means installed.",
+        "type": "string",
+        "enum": ["installed", "absent"],
+        "default": "installed"
+      }
+    },
+    "additionalProperties": false
+  }
+}

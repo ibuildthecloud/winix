@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+version: 1
+system:
+  applications:
+    microsoft_edge:
+      new_tab_page: about:blank
+      show_first_run: false
+  windows:
+    developer:
+      developer_mode: enabled
+      long_paths: enabled
+    remote_desktop:
+      state: enabled
+    search:
+      web_suggestions: false
+    widgets:
+      state: disabled
+
+users:
+  current:
+    windows:
+      file_explorer:
+        show_file_extensions: true
+        show_hidden_files: true
+        show_full_path_in_title_bar: true
+        launch_to: this_pc
+        show_frequent_folders: false
+        show_recent_files: false
+        show_cloud_files_in_quick_access: false
+        show_version_control: true
+        show_sync_provider_notifications: false
+      notifications:
+        do_not_disturb: enabled
+        applications:
+          PowerToys:
+            enabled: false
+      search:
+        highlights: false
+      wsl:
+        first_run_oobe: suppressed
+      personalization:
+        start_menu:
+          show_recommendations: false
+        taskbar:
+          show_widgets: false
+          system_tray:
+            show_bluetooth: false
+        theme:
+          mode: dark

@@ -1,0 +1,99 @@
+# DANGER: DESTRUCTIVE, OPINIONATED WORKSTATION PROFILE
+#
+# This is not the quick-start configuration. It removes applications (including
+# Microsoft Store), Start menu shortcuts, OEM pin declarations, and unlisted
+# taskbar pins. It also changes desktop, Start, and taskbar preferences. Review
+# the complete `winix-cfg plan examples/workstation.yaml --all` output before
+# applying it. Start with examples/quickstart.yaml instead.
+
+# yaml-language-server: $schema=../winix-cfg.schema.json
+
+version: 1
+
+system:
+  packages:
+    winget:
+      Microsoft.PowerShell:
+        state: installed
+
+  windows:
+    personalization:
+      start_menu:
+        oem_pins: absent
+        shortcuts:
+          Adobe Promotion.lnk:
+            state: absent
+          Dropbox.lnk:
+            state: absent
+
+users:
+  current:
+    fonts:
+      nerd_fonts:
+        JetBrainsMono: {}
+    packages:
+      appx:
+        # Remove now: keep these stale Start entries absent.
+        5319275A.WhatsAppDesktop:
+          state: absent
+        7EE7776C.LinkedInforWindows:
+          state: absent
+
+        # Probably remove: unwanted but currently installed AppX packages.
+        B9ECED6F.ASUSPCAssistant:
+          state: absent
+        B9ECED6F.Glidex:
+          state: absent
+        B9ECED6F.ProArtCreatorCenter:
+          state: absent
+        B9ECED6F.ScreenPadMaster:
+          state: absent
+        DolbyLaboratories.DolbySettings:
+          state: absent
+        DolbyLaboratories.DolbyVisionAccess:
+          state: absent
+        Microsoft.WindowsStore:
+          state: absent
+
+      winget:
+        Microsoft.VisualStudioCode:
+          state: installed
+
+    windows:
+      personalization:
+        desktop:
+          icons: disabled
+          color: "#1E1E1E"
+
+        start_menu:
+          oem_pins: absent
+          shortcuts:
+            Adobe Promotion.lnk:
+              state: absent
+            Dropbox.lnk:
+              state: absent
+          show_recent_items: false
+          show_recommendations: false
+
+        taskbar:
+          alignment: left
+          slots:
+            exhaustive: true
+            apps:
+              - app: windows_terminal
+              - app: jetbrains_toolbox
+              - app: microsoft_edge
+          show_task_view: false
+          show_widgets: false
+          show_search: icon
+
+# Device keys match the Windows computer name case-insensitively. This example
+# overlay applies only on a computer named DEVELOPMENT-LAPTOP.
+devices:
+  development-laptop:
+    users:
+      current:
+        windows:
+          personalization:
+            taskbar:
+              automatically_hide: true

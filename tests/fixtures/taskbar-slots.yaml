@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+version: 1
+users:
+  current:
+    windows:
+      personalization:
+        taskbar:
+          slots:
+            exhaustive: true
+            apps:
+              - app: windows_terminal
+              - app: jetbrains_toolbox
+              - app: microsoft_edge

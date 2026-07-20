@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Desktop personalization",
+  "description": "Controls desktop icon visibility and the solid desktop background color.",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "icons": {
+      "description": "Whether all desktop icons, including files and shortcuts, are shown.",
+      "type": "string",
+      "enum": ["enabled", "disabled"]
+    },
+    "color": {
+      "description": "Solid desktop background color as a six-digit RGB hex value.",
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "examples": ["#000000", "#1E1E1E"]
+    }
+  },
+  "additionalProperties": false
+}

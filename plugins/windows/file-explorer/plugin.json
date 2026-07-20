@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "name": "windows-file-explorer",
+  "path": "windows.file_explorer",
+  "placements": ["user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": { "powershell": ">=7.0", "administrator": false, "commands": [] }
+}

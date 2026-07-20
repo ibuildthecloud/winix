@@ -1,0 +1,13 @@
+{
+  "protocol_version": 2,
+  "name": "windows-installer",
+  "path": "packages.windows_installer",
+  "placements": ["system"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": {
+    "powershell": ">=7.0",
+    "administrator": true,
+    "commands": ["msiexec.exe"]
+  }
+}

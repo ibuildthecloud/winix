@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Remote Desktop host setting",
+  "description": "Controls whether Remote Desktop connections are accepted. This mirrors the WindowsDeveloperConfig registry setting and does not manage firewall rules or Windows edition support.",
+  "type": "object",
+  "properties": { "state": { "type": "string", "enum": ["enabled", "disabled"] } },
+  "required": ["state"],
+  "additionalProperties": false
+}

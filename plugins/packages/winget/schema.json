@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WinGet packages",
+  "description": "Packages managed through Windows Package Manager.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Exact, case-sensitive canonical WinGet package ID.",
+    "type": "string",
+    "minLength": 1
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": {
+        "description": "Desired installation state. Omission means installed.",
+        "type": "string",
+        "enum": ["installed", "absent"]
+      },
+      "version": {
+        "description": "An exact version or 'latest'. Omit to accept any installed version.",
+        "type": "string",
+        "minLength": 1,
+        "examples": ["latest", "7.6.0"]
+      },
+      "source": {
+        "description": "WinGet source name.",
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "additionalProperties": false
+  }
+}

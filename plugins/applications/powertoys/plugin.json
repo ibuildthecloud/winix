@@ -1,0 +1,13 @@
+{
+  "protocol_version": 2,
+  "name": "applications-powertoys",
+  "path": "applications.powertoys",
+  "placements": ["user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": {
+    "powershell": ">=7.0",
+    "administrator": false,
+    "commands": []
+  }
+}

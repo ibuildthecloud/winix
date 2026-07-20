@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "name": "windows-multitasking",
+  "path": "windows.multitasking",
+  "placements": ["user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": { "powershell": ">=7.0", "administrator": false, "commands": [] }
+}

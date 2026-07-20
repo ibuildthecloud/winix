@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Start menu personalization",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "oem_pins": {
+      "description": "Desired state of the placement's OEM LayoutModification.json. System placement manages the Default user template; user placement manages the current profile.",
+      "const": "absent"
+    },
+    "show_recently_added_apps": { "type": "boolean" },
+    "show_most_used_apps": { "type": "boolean" },
+    "show_recent_items": { "description": "Show recently opened items in Start, Jump Lists, and File Explorer.", "type": "boolean" },
+    "show_recommendations": { "description": "Show recommendations in the Windows 11 Start menu.", "type": "boolean" },
+    "shortcuts": {
+      "description": "Start Menu shortcuts managed relative to the placement's Programs directory. System placement uses the all-users Start Menu; user placement uses the current user's Start Menu.",
+      "type": "object",
+      "propertyNames": {
+        "description": "Relative .lnk path beneath the Start Menu Programs directory.",
+        "type": "string",
+        "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+\\.lnk$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "state": { "const": "absent" }
+        },
+        "required": ["state"],
+        "additionalProperties": false
+      }
+    },
+    "folders": {
+      "description": "Folders displayed beside the power button on Windows 11.",
+      "type": "object",
+      "properties": {
+        "settings": { "type": "string", "enum": ["visible", "hidden"] },
+        "file_explorer": { "type": "string", "enum": ["visible", "hidden"] },
+        "documents": { "type": "string", "enum": ["visible", "hidden"] },
+        "downloads": { "type": "string", "enum": ["visible", "hidden"] },
+        "music": { "type": "string", "enum": ["visible", "hidden"] },
+        "pictures": { "type": "string", "enum": ["visible", "hidden"] },
+        "videos": { "type": "string", "enum": ["visible", "hidden"] },
+        "network": { "type": "string", "enum": ["visible", "hidden"] },
+        "personal_folder": { "type": "string", "enum": ["visible", "hidden"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

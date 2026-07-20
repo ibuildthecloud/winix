@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows Search settings",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "web_suggestions": { "type": "boolean" },
+    "highlights": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

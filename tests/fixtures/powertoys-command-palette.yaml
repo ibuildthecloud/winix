@@ -1,0 +1,7 @@
+version: 1
+users:
+  current:
+    applications:
+      powertoys:
+        command_palette:
+          activation_shortcut: alt+space

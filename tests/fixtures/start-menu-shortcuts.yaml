@@ -1,0 +1,19 @@
+version: 1
+
+system:
+  windows:
+    personalization:
+      start_menu:
+        oem_pins: absent
+        shortcuts:
+          Adobe Promotion.lnk:
+            state: absent
+          Dropbox.lnk:
+            state: absent
+
+users:
+  current:
+    windows:
+      personalization:
+        start_menu:
+          oem_pins: absent

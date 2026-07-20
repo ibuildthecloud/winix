@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Add/Remove Programs registrations",
+  "description": "System programs removed by stable uninstall-registry identity.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": { "const": "absent" },
+      "display_name": { "type": "string", "minLength": 1 }
+    },
+    "required": ["state", "display_name"],
+    "additionalProperties": false
+  }
+}

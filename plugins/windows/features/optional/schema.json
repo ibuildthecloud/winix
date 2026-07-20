@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows optional features",
+  "description": "Desired state for Windows capabilities and classic optional features. Feature keys are exact native names. Capability keys may be exact native names or omit the tilde-delimited qualifier and version suffix when the remaining name uniquely identifies one catalog entry. Localized display names are not supported.",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "minLength": 1,
+    "pattern": "^[^*?\\[\\]\\r\\n]+$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "description": "The Windows servicing catalog that owns this exact resource name.",
+        "type": "string",
+        "enum": ["capability", "feature"]
+      },
+      "state": {
+        "description": "Whether the capability or feature is enabled. Disabling a classic feature retains its payload.",
+        "type": "string",
+        "enum": ["enabled", "disabled"]
+      }
+    },
+    "required": ["provider", "state"],
+    "additionalProperties": false
+  }
+}

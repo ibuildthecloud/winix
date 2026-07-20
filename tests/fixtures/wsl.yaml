@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+version: 1
+system:
+  windows:
+    wsl:
+      state: installed
+      version: latest
+      preview: false
+      distros:
+        - Ubuntu-24.04
+        - Debian
+
+users:
+  current:
+    windows:
+      wsl:
+        first_run_oobe: suppressed

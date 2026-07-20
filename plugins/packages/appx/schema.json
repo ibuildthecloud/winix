@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Current-user AppX packages",
+  "description": "AppX/MSIX packages managed for the selected user.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Exact, case-sensitive AppX package Name (not PackageFullName or display name).",
+    "type": "string",
+    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": {
+        "description": "Desired package state. The first implementation supports removal only.",
+        "const": "absent"
+      }
+    },
+    "required": ["state"],
+    "additionalProperties": false
+  }
+}

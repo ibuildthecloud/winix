@@ -1,0 +1,17 @@
+version: 1
+system:
+  windows:
+    power:
+      display_off_after:
+        plugged_in_seconds: 900
+        on_battery_seconds: 300
+      presence_sensing:
+        inattentive_dim_after:
+          plugged_in_seconds: 5
+          on_battery_seconds: 5
+        inattentive_display_off_after:
+          plugged_in_seconds: 30
+          on_battery_seconds: 30
+        away_display_off_after:
+          plugged_in_seconds: 60
+          on_battery_seconds: 60

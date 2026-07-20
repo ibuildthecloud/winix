@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows notification settings",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "do_not_disturb": { "type": "string", "enum": ["enabled", "disabled"] },
+    "applications": {
+      "type": "object",
+      "properties": {
+        "PowerToys": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } },
+          "required": ["enabled"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

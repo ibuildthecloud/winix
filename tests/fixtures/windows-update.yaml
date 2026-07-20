@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+version: 1
+system:
+  windows:
+    update:
+      get_latest_updates_as_soon_as_available: true
+      restart_notifications: true
+      update_other_microsoft_products: true

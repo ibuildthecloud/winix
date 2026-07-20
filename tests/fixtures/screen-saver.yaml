@@ -1,0 +1,7 @@
+version: 1
+users:
+  current:
+    windows:
+      personalization:
+        screen_saver:
+          state: enabled

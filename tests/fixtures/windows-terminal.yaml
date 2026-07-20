@@ -1,0 +1,24 @@
+version: 1
+users:
+  current:
+    applications:
+      windows_terminal:
+        default_profile: source:Windows.Terminal.PowershellCore
+        disabled_profile_sources:
+          - Windows.Terminal.Azure
+        tab_switcher_mode: none
+        graphics_api: direct3d11
+        key_bindings:
+          copy:
+            id: Terminal.CopyToClipboard
+            keys: ctrl+c
+        profiles:
+          defaults:
+            font:
+              face: JetBrainsMono NFM
+              size: 12
+            cursor_shape: filledBox
+            bell_style: none
+          overrides:
+            name:Windows PowerShell:
+              hidden: true

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows Subsystem for Linux",
+  "description": "WSL and distributions offered by the WSL online catalog.",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "state": {
+      "description": "Desired WSL installation state. Omission means installed. Setting absent also unregisters every installed distribution and deletes its data.",
+      "type": "string",
+      "enum": ["installed", "absent"],
+      "default": "installed"
+    },
+    "version": {
+      "description": "Set to latest to upgrade WSL. Omit to accept the installed WSL version.",
+      "const": "latest"
+    },
+    "preview": {
+      "description": "When upgrading, select the latest WSL prerelease instead of the latest stable release. Omission uses the stable channel when version is managed.",
+      "type": "boolean",
+      "default": false
+    },
+    "distros": {
+      "description": "Exact distribution names from `wsl.exe --list --online` to ensure are installed. Omission manages no distributions, and other installed distributions are left unchanged.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^\\r\\n]+$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "first_run_oobe": {
+      "description": "Suppress the current user's Windows 'Welcome to WSL' first-run experience. This does not skip a distribution's own account setup.",
+      "const": "suppressed"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "state": { "const": "absent" } },
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {
+          "version": false,
+          "preview": { "const": false },
+          "distros": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "preview": { "const": true } },
+        "required": ["preview"]
+      },
+      "then": { "required": ["version"] }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "name": "windows-search",
+  "path": "windows.search",
+  "placements": ["system", "user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": { "powershell": ">=7.0", "administrator": false, "commands": [] }
+}

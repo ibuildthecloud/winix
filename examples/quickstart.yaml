@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../winix-cfg.schema.json
+
+# This introductory configuration manages one reversible current-user
+# preference. It does not install or remove software, remove shortcuts, or
+# require elevation. Change `enabled` to `disabled` if that is your preference.
+version: 1
+
+users:
+  current:
+    windows:
+      personalization:
+        desktop:
+          icons: enabled

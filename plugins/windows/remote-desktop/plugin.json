@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "name": "windows-remote-desktop",
+  "path": "windows.remote_desktop",
+  "placements": ["system"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": { "powershell": ">=7.0", "administrator": true, "commands": [] }
+}

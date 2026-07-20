@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows multitasking settings",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "alt_tab": {
+      "description": "Controls whether Alt+Tab shows application windows or individual tabs from supported applications.",
+      "type": "string",
+      "enum": ["windows_only"]
+    }
+  },
+  "additionalProperties": false
+}

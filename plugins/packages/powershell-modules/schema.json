@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PowerShell modules",
+  "description": "PowerShell modules managed through Microsoft.PowerShell.PSResourceGet.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Exact, case-sensitive PowerShell Gallery module name.",
+    "type": "string",
+    "minLength": 1
+  },
+  "additionalProperties": {
+    "type": "object",
+    "properties": {
+      "state": {
+        "description": "Desired installation state. Omission means installed.",
+        "type": "string",
+        "enum": ["installed", "absent"]
+      },
+      "version": {
+        "description": "An exact version or 'latest'. Omit to accept any installed version.",
+        "type": "string",
+        "minLength": 1,
+        "examples": ["latest", "1.11.445"]
+      },
+      "repository": {
+        "description": "Registered PSResourceGet repository name.",
+        "type": "string",
+        "minLength": 1
+      },
+      "prerelease": {
+        "description": "Allow prerelease versions when resolving the requested version. Omission uses stable releases only when resolution is requested.",
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

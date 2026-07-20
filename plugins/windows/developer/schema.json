@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows developer settings",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "sudo": {
+      "type": "object",
+      "properties": {
+        "state": { "const": "enabled" },
+        "mode": {
+          "type": "string",
+          "enum": ["force_new_window", "disable_input", "inline"]
+        }
+      },
+      "required": ["state", "mode"],
+      "additionalProperties": false
+    },
+    "end_task": {
+      "type": "string",
+      "enum": ["enabled", "disabled"]
+    },
+    "developer_mode": {
+      "description": "Allow development and sideloading without a developer license.",
+      "type": "string",
+      "enum": ["enabled", "disabled"]
+    },
+    "long_paths": {
+      "description": "Enable Win32 long path support for applications that opt in.",
+      "type": "string",
+      "enum": ["enabled", "disabled"]
+    }
+  },
+  "additionalProperties": false
+}

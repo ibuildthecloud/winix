@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../winix-cfg.schema.json
+
+version: 1
+system:
+  applications:
+    microsoft_edge:
+      extensions:
+        onagfgjlokaciajhjmajljcfanonbmia:
+          state: required
+
+users:
+  current:
+    windows:
+      multitasking:
+        alt_tab: windows_only

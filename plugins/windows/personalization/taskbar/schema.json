@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Taskbar personalization",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "alignment": { "type": "string", "enum": ["left", "center"] },
+    "automatically_hide": { "type": "boolean" },
+    "combine_buttons": { "type": "string", "enum": ["always", "when_full", "never"] },
+    "show_badges": { "type": "boolean" },
+    "show_task_view": { "type": "boolean" },
+    "show_widgets": { "type": "boolean" },
+    "show_search": { "type": "string", "enum": ["hidden", "icon", "box"] },
+    "show_copilot": { "type": "boolean" },
+    "slots": {
+      "description": "The ordered taskbar apps. An exhaustive list maps deterministically to Win+1 through Win+5.",
+      "type": "object",
+      "properties": {
+        "exhaustive": {
+          "description": "When true, remove pins not listed in apps and make these the Win+number slots. When false, retain other pins, which may precede these apps.",
+          "type": "boolean"
+        },
+        "apps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "app": {
+                "description": "A portable Winix application alias resolved on the target machine.",
+                "type": "string",
+                "enum": ["windows_terminal", "jetbrains_toolbox", "microsoft_edge"]
+              },
+              "app_user_model_id": { "type": "string", "minLength": 1 },
+              "desktop_application_id": { "type": "string", "minLength": 1 },
+              "desktop_application_link_path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\.[lL][nN][kK]$"
+              }
+            },
+            "oneOf": [
+              { "required": ["app"] },
+              { "required": ["app_user_model_id"] },
+              { "required": ["desktop_application_id"] },
+              { "required": ["desktop_application_link_path"] }
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["apps", "exhaustive"],
+      "additionalProperties": false
+    },
+    "system_tray": {
+      "type": "object",
+      "properties": {
+        "show_seconds": { "type": "boolean" },
+        "show_touch_keyboard": { "type": "string", "enum": ["never", "when_no_keyboard", "always"] },
+        "show_bluetooth": { "type": "boolean" },
+        "other_icons": {
+          "description": "Maps live notification-area display names to whether their icons appear directly on the taskbar or in the hidden-icon overflow menu.",
+          "type": "object",
+          "propertyNames": { "minLength": 1 },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "visibility": {
+                "type": "string",
+                "enum": ["shown", "hidden"]
+              }
+            },
+            "required": ["visibility"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

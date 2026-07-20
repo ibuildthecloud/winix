@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows 11 power and presence settings",
+  "description": "Desired consumer display and presence-aware timeouts for the active Windows 11 power scheme. Values are seconds; zero disables the corresponding timeout.",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "display_off_after": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "plugged_in_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "on_battery_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      },
+      "additionalProperties": false
+    },
+    "presence_sensing": {
+      "description": "Windows 11 human-presence timeouts. These settings have an effect only on devices with a compatible presence sensor and when the consumer Presence Sensing feature is enabled.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "inattentive_dim_after": {
+          "description": "Time after the sensor reports that the user is looking away before Windows dims the display.",
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "plugged_in_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "on_battery_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          },
+          "additionalProperties": false
+        },
+        "inattentive_display_off_after": {
+          "description": "Time after the sensor reports that the user is looking away before Windows turns off the display.",
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "plugged_in_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "on_battery_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          },
+          "additionalProperties": false
+        },
+        "away_dim_after": {
+          "description": "Time after the sensor reports that the user has left before Windows dims the display.",
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "plugged_in_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "on_battery_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          },
+          "additionalProperties": false
+        },
+        "away_display_off_after": {
+          "description": "Lock on Leave delay: time after the sensor reports that the user has left before Windows turns off the display and begins the lock experience.",
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "plugged_in_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "on_battery_seconds": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

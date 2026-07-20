@@ -1,0 +1,26 @@
+version: 1
+
+system:
+  packages:
+    winget:
+      GoLang.Go: { state: installed }
+      Git.Git: { state: installed }
+      OpenJS.NodeJS.LTS: { state: absent }
+      Microsoft.VisualStudioCode: { state: absent }
+      Rustlang.Rustup: { state: absent }
+      Microsoft.PowerShell: { state: absent }
+      ByteDance.CapCut: { state: absent }
+      Neovim.Neovim: { state: installed }
+
+users:
+  current:
+    packages:
+      winget:
+        Git.Git: { state: absent }
+        OpenJS.NodeJS.LTS: { state: installed }
+        Microsoft.VisualStudioCode: { state: installed }
+        Rustlang.Rustup: { state: installed }
+        Microsoft.PowerShell: { state: installed }
+        Microsoft.Teams: { state: absent }
+        Neovim.Neovim: { state: absent }
+        GoLang.Go: { state: absent }

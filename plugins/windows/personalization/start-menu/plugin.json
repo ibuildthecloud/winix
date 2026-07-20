@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "name": "windows-start-menu",
+  "path": "windows.personalization.start_menu",
+  "placements": ["system", "user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": { "powershell": ">=7.0", "administrator": false, "commands": [] }
+}

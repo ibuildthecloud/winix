@@ -1,0 +1,10 @@
+version: 1
+
+users:
+  current:
+    packages:
+      powershell_modules:
+        Microsoft.WinGet.Client:
+          state: installed
+          version: latest
+          repository: PSGallery

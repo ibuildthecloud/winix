@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows Update preferences",
+  "description": "Controls supported Windows Update preferences available on current Windows 11 editions. These preferences do not disable servicing or guarantee that Windows will never restart.",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "get_latest_updates_as_soon_as_available": {
+      "description": "Receive optional updates and gradual feature rollouts as soon as they are available for the device.",
+      "type": "boolean"
+    },
+    "restart_notifications": {
+      "description": "Notify the interactive user when an installed update requires a restart.",
+      "type": "boolean"
+    },
+    "update_other_microsoft_products": {
+      "description": "Receive updates for other Microsoft products alongside Windows updates.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

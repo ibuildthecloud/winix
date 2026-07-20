@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Windows Terminal configuration",
+  "type": "object",
+  "properties": {
+    "default_profile": {
+      "description": "Profile selector using guid:<guid>, name:<name>, or source:<dynamic-profile-source>. It must resolve to exactly one profile.",
+      "type": "string",
+      "pattern": "^(guid|name|source):.+$"
+    },
+    "disabled_profile_sources": {
+      "description": "Dynamic profile generators disabled through Terminal's disabledProfileSources setting.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "tab_switcher_mode": {
+      "description": "Ordering and UI behavior used by nextTab and prevTab actions.",
+      "type": "string",
+      "enum": ["mru", "in_order", "none"]
+    },
+    "graphics_api": {
+      "description": "Graphics API used by Terminal's renderer. Automatic removes the explicit rendering.graphicsAPI override.",
+      "type": "string",
+      "enum": ["automatic", "direct2d", "direct3d11"]
+    },
+    "key_bindings": {
+      "description": "The complete desired set of Winix-owned actions and their key combinations. When key_bindings is present, Winix removes omitted actions whose IDs use the Winix. prefix; configured keys also replace any existing binding for the same key combination.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "state": { "const": "absent" },
+          "id": { "type": "string", "minLength": 1 },
+          "command": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+          "keys": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+            ]
+          }
+        },
+        "required": ["keys"],
+        "oneOf": [
+          { "required": ["id"], "not": { "anyOf": [{ "required": ["command"] }, { "required": ["state"] }] } },
+          { "required": ["command"], "not": { "anyOf": [{ "required": ["id"] }, { "required": ["state"] }] } },
+          { "required": ["state"], "not": { "anyOf": [{ "required": ["id"] }, { "required": ["command"] }] } }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "font": {
+              "type": "object",
+              "properties": {
+                "face": { "type": "string", "minLength": 1 },
+                "size": { "type": "number", "exclusiveMinimum": 0 },
+                "weight": {
+                  "oneOf": [
+                    { "type": "integer", "minimum": 100, "maximum": 1000 },
+                    { "type": "string", "enum": ["thin", "extra-light", "light", "semi-light", "normal", "medium", "semi-bold", "bold", "extra-bold", "black", "extra-black"] }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "color_scheme": { "type": "string", "minLength": 1 },
+            "opacity": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "use_acrylic": { "type": "boolean" },
+            "padding": { "type": "string", "minLength": 1 },
+            "cursor_shape": { "type": "string", "enum": ["bar", "vintage", "underscore", "filledBox", "emptyBox", "doubleUnderscore"] },
+            "bell_style": { "type": "string", "enum": ["all", "audible", "window", "taskbar", "none"] },
+            "background_image": { "type": "string", "minLength": 1 },
+            "background_image_opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "background_image_stretch_mode": { "type": "string", "enum": ["none", "fill", "uniform", "uniformToFill"] },
+            "scrollbar_state": { "type": "string", "enum": ["visible", "hidden", "always"] }
+          },
+          "additionalProperties": false
+        },
+        "overrides": {
+          "description": "Profile changes keyed by guid:<guid>, name:<name>, or source:<dynamic-profile-source>. Source selectors may update multiple generated profiles.",
+          "type": "object",
+          "propertyNames": { "pattern": "^(guid|name|source):.+$" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "hidden": { "type": "boolean" },
+              "appearance": {
+                "type": "object",
+                "properties": {
+                  "font": {
+                    "type": "object",
+                    "properties": {
+                      "face": { "type": "string", "minLength": 1 },
+                      "size": { "type": "number", "exclusiveMinimum": 0 },
+                      "weight": {
+                        "oneOf": [
+                          { "type": "integer", "minimum": 100, "maximum": 1000 },
+                          { "type": "string", "enum": ["thin", "extra-light", "light", "semi-light", "normal", "medium", "semi-bold", "bold", "extra-bold", "black", "extra-black"] }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "color_scheme": { "type": "string", "minLength": 1 },
+                  "opacity": { "type": "integer", "minimum": 0, "maximum": 100 },
+                  "use_acrylic": { "type": "boolean" },
+                  "padding": { "type": "string", "minLength": 1 },
+                  "cursor_shape": { "type": "string", "enum": ["bar", "vintage", "underscore", "filledBox", "emptyBox", "doubleUnderscore"] },
+                  "bell_style": { "type": "string", "enum": ["all", "audible", "window", "taskbar", "none"] },
+                  "background_image": { "type": "string", "minLength": 1 },
+                  "background_image_opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "background_image_stretch_mode": { "type": "string", "enum": ["none", "fill", "uniform", "uniformToFill"] },
+                  "scrollbar_state": { "type": "string", "enum": ["visible", "hidden", "always"] }
+                },
+                "additionalProperties": false
+              }
+            },
+            "minProperties": 1,
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

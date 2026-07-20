@@ -1,0 +1,13 @@
+{
+  "protocol_version": 2,
+  "name": "windows-optional-features",
+  "path": "windows.features.optional",
+  "placements": ["system"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": {
+    "powershell": ">=7.0",
+    "administrator": true,
+    "commands": ["powershell.exe", "Get-CimInstance"]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PowerToys configuration",
+  "description": "Current-user settings for PowerToys and its packaged applications.",
+  "type": "object",
+  "properties": {
+    "command_palette": {
+      "description": "Settings owned by the packaged Microsoft Command Palette application.",
+      "type": "object",
+      "properties": {
+        "activation_shortcut": {
+          "description": "Global shortcut that opens Command Palette.",
+          "const": "alt+space"
+        }
+      },
+      "required": ["activation_shortcut"],
+      "additionalProperties": false
+    },
+    "grab_and_move": {
+      "description": "Settings for the PowerToys Grab And Move utility.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether Grab And Move is enabled for the current user.",
+          "type": "boolean"
+        },
+        "activation_modifier": {
+          "description": "Modifier key held while moving or resizing a window.",
+          "type": "string",
+          "enum": ["alt", "win"]
+        }
+      },
+      "required": ["enabled", "activation_modifier"],
+      "additionalProperties": false
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

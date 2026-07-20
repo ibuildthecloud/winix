@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Windows quality gate
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Restore Cargo cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Show pinned Rust toolchain
+        run: |
+          rustc --version --verbose
+          cargo --version
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust with all features
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Lint production Rust configuration
+        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
+
+      - name: Test Rust with all features
+        run: cargo test --locked --all-targets --all-features
+
+      - name: Test production Rust configuration
+        run: cargo test --locked --all-targets --no-default-features
+
+      - name: Build production release
+        run: cargo build --locked --release --no-default-features
+
+      - name: Install pinned PowerShell quality tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -AllowClobber
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck
+
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Test-PowerShellQuality.ps1
+
+      - name: Test PowerShell helpers
+        shell: pwsh
+        run: |
+          Import-Module Pester -RequiredVersion 5.7.1 -Force
+          Invoke-Pester -Path tests/powershell -CI
+
+      - name: Discover plugins
+        run: cargo run --locked -- plugins
+
+      - name: Verify generated schema
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $generated = Join-Path $env:RUNNER_TEMP 'winix-cfg.schema.json'
+          cargo run --locked -- schema --output $generated
+          if ((Get-FileHash -Algorithm SHA256 winix-cfg.schema.json).Hash -ne (Get-FileHash -Algorithm SHA256 $generated).Hash) {
+              git diff --no-index -- winix-cfg.schema.json $generated | Out-Host
+              throw 'winix-cfg.schema.json is not current; regenerate it with cargo run -- schema --output winix-cfg.schema.json'
+          }
+
+      - name: Validate safe quickstart
+        run: cargo run --locked -- validate examples/quickstart.yaml --output ndjson
+
+      - name: Plan safe quickstart without mutation
+        run: cargo run --locked -- plan examples/quickstart.yaml --user --output trace

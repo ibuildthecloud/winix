@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Microsoft Edge machine policies",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "new_tab_page": { "const": "about:blank" },
+    "show_first_run": { "type": "boolean" },
+    "extensions": {
+      "description": "Microsoft Edge Add-ons that Edge must install and keep enabled by machine policy.",
+      "type": "object",
+      "propertyNames": {
+        "description": "Canonical 32-character Microsoft Edge extension ID.",
+        "pattern": "^[a-p]{32}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "description": "Requires the extension to be installed and enabled. Omitted extensions are unmanaged.",
+            "const": "required"
+          }
+        },
+        "required": ["state"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

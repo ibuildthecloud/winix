@@ -1,0 +1,1833 @@
+{
+  "$defs": {
+    "plugins": {
+      "applications-powertoys": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Current-user settings for PowerToys and its packaged applications.",
+        "minProperties": 1,
+        "properties": {
+          "command_palette": {
+            "additionalProperties": false,
+            "description": "Settings owned by the packaged Microsoft Command Palette application.",
+            "properties": {
+              "activation_shortcut": {
+                "const": "alt+space",
+                "description": "Global shortcut that opens Command Palette."
+              }
+            },
+            "required": [
+              "activation_shortcut"
+            ],
+            "type": "object"
+          },
+          "grab_and_move": {
+            "additionalProperties": false,
+            "description": "Settings for the PowerToys Grab And Move utility.",
+            "properties": {
+              "activation_modifier": {
+                "description": "Modifier key held while moving or resizing a window.",
+                "enum": [
+                  "alt",
+                  "win"
+                ],
+                "type": "string"
+              },
+              "enabled": {
+                "description": "Whether Grab And Move is enabled for the current user.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled",
+              "activation_modifier"
+            ],
+            "type": "object"
+          }
+        },
+        "title": "PowerToys configuration",
+        "type": "object"
+      },
+      "applications-windows-terminal": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "default_profile": {
+            "description": "Profile selector using guid:<guid>, name:<name>, or source:<dynamic-profile-source>. It must resolve to exactly one profile.",
+            "pattern": "^(guid|name|source):.+$",
+            "type": "string"
+          },
+          "disabled_profile_sources": {
+            "description": "Dynamic profile generators disabled through Terminal's disabledProfileSources setting.",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "graphics_api": {
+            "description": "Graphics API used by Terminal's renderer. Automatic removes the explicit rendering.graphicsAPI override.",
+            "enum": [
+              "automatic",
+              "direct2d",
+              "direct3d11"
+            ],
+            "type": "string"
+          },
+          "key_bindings": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "command"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "state"
+                        ]
+                      }
+                    ]
+                  },
+                  "required": [
+                    "id"
+                  ]
+                },
+                {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "state"
+                        ]
+                      }
+                    ]
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "command"
+                        ]
+                      }
+                    ]
+                  },
+                  "required": [
+                    "state"
+                  ]
+                }
+              ],
+              "properties": {
+                "command": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+                  "type": "string"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "keys": {
+                  "oneOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  ]
+                },
+                "state": {
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "keys"
+              ],
+              "type": "object"
+            },
+            "description": "The complete desired set of Winix-owned actions and their key combinations. When key_bindings is present, Winix removes omitted actions whose IDs use the Winix. prefix; configured keys also replace any existing binding for the same key combination.",
+            "propertyNames": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+            },
+            "type": "object"
+          },
+          "profiles": {
+            "additionalProperties": false,
+            "properties": {
+              "defaults": {
+                "additionalProperties": false,
+                "properties": {
+                  "background_image": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "background_image_opacity": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "background_image_stretch_mode": {
+                    "enum": [
+                      "none",
+                      "fill",
+                      "uniform",
+                      "uniformToFill"
+                    ],
+                    "type": "string"
+                  },
+                  "bell_style": {
+                    "enum": [
+                      "all",
+                      "audible",
+                      "window",
+                      "taskbar",
+                      "none"
+                    ],
+                    "type": "string"
+                  },
+                  "color_scheme": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "cursor_shape": {
+                    "enum": [
+                      "bar",
+                      "vintage",
+                      "underscore",
+                      "filledBox",
+                      "emptyBox",
+                      "doubleUnderscore"
+                    ],
+                    "type": "string"
+                  },
+                  "font": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "face": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "size": {
+                        "exclusiveMinimum": 0,
+                        "type": "number"
+                      },
+                      "weight": {
+                        "oneOf": [
+                          {
+                            "maximum": 1000,
+                            "minimum": 100,
+                            "type": "integer"
+                          },
+                          {
+                            "enum": [
+                              "thin",
+                              "extra-light",
+                              "light",
+                              "semi-light",
+                              "normal",
+                              "medium",
+                              "semi-bold",
+                              "bold",
+                              "extra-bold",
+                              "black",
+                              "extra-black"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "opacity": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "padding": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scrollbar_state": {
+                    "enum": [
+                      "visible",
+                      "hidden",
+                      "always"
+                    ],
+                    "type": "string"
+                  },
+                  "use_acrylic": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "overrides": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "appearance": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "background_image": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "background_image_opacity": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "background_image_stretch_mode": {
+                          "enum": [
+                            "none",
+                            "fill",
+                            "uniform",
+                            "uniformToFill"
+                          ],
+                          "type": "string"
+                        },
+                        "bell_style": {
+                          "enum": [
+                            "all",
+                            "audible",
+                            "window",
+                            "taskbar",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "color_scheme": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cursor_shape": {
+                          "enum": [
+                            "bar",
+                            "vintage",
+                            "underscore",
+                            "filledBox",
+                            "emptyBox",
+                            "doubleUnderscore"
+                          ],
+                          "type": "string"
+                        },
+                        "font": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "face": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "size": {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            },
+                            "weight": {
+                              "oneOf": [
+                                {
+                                  "maximum": 1000,
+                                  "minimum": 100,
+                                  "type": "integer"
+                                },
+                                {
+                                  "enum": [
+                                    "thin",
+                                    "extra-light",
+                                    "light",
+                                    "semi-light",
+                                    "normal",
+                                    "medium",
+                                    "semi-bold",
+                                    "bold",
+                                    "extra-bold",
+                                    "black",
+                                    "extra-black"
+                                  ],
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "opacity": {
+                          "maximum": 100,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "padding": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "scrollbar_state": {
+                          "enum": [
+                            "visible",
+                            "hidden",
+                            "always"
+                          ],
+                          "type": "string"
+                        },
+                        "use_acrylic": {
+                          "type": "boolean"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "hidden": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "description": "Profile changes keyed by guid:<guid>, name:<name>, or source:<dynamic-profile-source>. Source selectors may update multiple generated profiles.",
+                "propertyNames": {
+                  "pattern": "^(guid|name|source):.+$"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "tab_switcher_mode": {
+            "description": "Ordering and UI behavior used by nextTab and prevTab actions.",
+            "enum": [
+              "mru",
+              "in_order",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "title": "Windows Terminal configuration",
+        "type": "object"
+      },
+      "appx": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "absent",
+              "description": "Desired package state. The first implementation supports removal only."
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        "description": "AppX/MSIX packages managed for the selected user.",
+        "propertyNames": {
+          "description": "Exact, case-sensitive AppX package Name (not PackageFullName or display name).",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        },
+        "title": "Current-user AppX packages",
+        "type": "object"
+      },
+      "arp": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "display_name": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state",
+            "display_name"
+          ],
+          "type": "object"
+        },
+        "description": "System programs removed by stable uninstall-registry identity.",
+        "title": "Add/Remove Programs registrations",
+        "type": "object"
+      },
+      "microsoft-edge-policy": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "extensions": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "const": "required",
+                  "description": "Requires the extension to be installed and enabled. Omitted extensions are unmanaged."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            },
+            "description": "Microsoft Edge Add-ons that Edge must install and keep enabled by machine policy.",
+            "propertyNames": {
+              "description": "Canonical 32-character Microsoft Edge extension ID.",
+              "pattern": "^[a-p]{32}$"
+            },
+            "type": "object"
+          },
+          "new_tab_page": {
+            "const": "about:blank"
+          },
+          "show_first_run": {
+            "type": "boolean"
+          }
+        },
+        "title": "Microsoft Edge machine policies",
+        "type": "object"
+      },
+      "nerd-fonts": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "default": "installed",
+              "description": "Desired font family state. Omission means installed.",
+              "enum": [
+                "installed",
+                "absent"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "description": "Nerd Font families installed from official ryanoasis/nerd-fonts release archives.",
+        "propertyNames": {
+          "description": "Exact, case-sensitive Nerd Fonts release asset name, without the .zip suffix (for example JetBrainsMono, FiraCode, or Hack).",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+          "type": "string"
+        },
+        "title": "Nerd Fonts",
+        "type": "object"
+      },
+      "powershell-modules": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "prerelease": {
+              "default": false,
+              "description": "Allow prerelease versions when resolving the requested version. Omission uses stable releases only when resolution is requested.",
+              "type": "boolean"
+            },
+            "repository": {
+              "description": "Registered PSResourceGet repository name.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "description": "Desired installation state. Omission means installed.",
+              "enum": [
+                "installed",
+                "absent"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "description": "An exact version or 'latest'. Omit to accept any installed version.",
+              "examples": [
+                "latest",
+                "1.11.445"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "description": "PowerShell modules managed through Microsoft.PowerShell.PSResourceGet.",
+        "propertyNames": {
+          "description": "Exact, case-sensitive PowerShell Gallery module name.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": "PowerShell modules",
+        "type": "object"
+      },
+      "windows-desktop": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Controls desktop icon visibility and the solid desktop background color.",
+        "minProperties": 1,
+        "properties": {
+          "color": {
+            "description": "Solid desktop background color as a six-digit RGB hex value.",
+            "examples": [
+              "#000000",
+              "#1E1E1E"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "type": "string"
+          },
+          "icons": {
+            "description": "Whether all desktop icons, including files and shortcuts, are shown.",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "title": "Desktop personalization",
+        "type": "object"
+      },
+      "windows-developer": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "developer_mode": {
+            "description": "Allow development and sideloading without a developer license.",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "end_task": {
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "long_paths": {
+            "description": "Enable Win32 long path support for applications that opt in.",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "sudo": {
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "enum": [
+                  "force_new_window",
+                  "disable_input",
+                  "inline"
+                ],
+                "type": "string"
+              },
+              "state": {
+                "const": "enabled"
+              }
+            },
+            "required": [
+              "state",
+              "mode"
+            ],
+            "type": "object"
+          }
+        },
+        "title": "Windows developer settings",
+        "type": "object"
+      },
+      "windows-file-explorer": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "launch_to": {
+            "enum": [
+              "home",
+              "this_pc"
+            ],
+            "type": "string"
+          },
+          "show_cloud_files_in_quick_access": {
+            "type": "boolean"
+          },
+          "show_file_extensions": {
+            "type": "boolean"
+          },
+          "show_frequent_folders": {
+            "type": "boolean"
+          },
+          "show_full_path_in_title_bar": {
+            "type": "boolean"
+          },
+          "show_hidden_files": {
+            "type": "boolean"
+          },
+          "show_recent_files": {
+            "type": "boolean"
+          },
+          "show_sync_provider_notifications": {
+            "type": "boolean"
+          },
+          "show_version_control": {
+            "type": "boolean"
+          }
+        },
+        "title": "File Explorer settings",
+        "type": "object"
+      },
+      "windows-installer": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        "description": "Machine-wide MSI products identified by canonical product code.",
+        "propertyNames": {
+          "description": "Uppercase MSI product code including braces.",
+          "pattern": "^\\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\\}$",
+          "type": "string"
+        },
+        "title": "Windows Installer products",
+        "type": "object"
+      },
+      "windows-multitasking": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "alt_tab": {
+            "description": "Controls whether Alt+Tab shows application windows or individual tabs from supported applications.",
+            "enum": [
+              "windows_only"
+            ],
+            "type": "string"
+          }
+        },
+        "title": "Windows multitasking settings",
+        "type": "object"
+      },
+      "windows-notifications": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "applications": {
+            "additionalProperties": false,
+            "properties": {
+              "PowerToys": {
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "do_not_disturb": {
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "title": "Windows notification settings",
+        "type": "object"
+      },
+      "windows-optional-features": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "description": "The Windows servicing catalog that owns this exact resource name.",
+              "enum": [
+                "capability",
+                "feature"
+              ],
+              "type": "string"
+            },
+            "state": {
+              "description": "Whether the capability or feature is enabled. Disabling a classic feature retains its payload.",
+              "enum": [
+                "enabled",
+                "disabled"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "state"
+          ],
+          "type": "object"
+        },
+        "description": "Desired state for Windows capabilities and classic optional features. Feature keys are exact native names. Capability keys may be exact native names or omit the tilde-delimited qualifier and version suffix when the remaining name uniquely identifies one catalog entry. Localized display names are not supported.",
+        "minProperties": 1,
+        "propertyNames": {
+          "minLength": 1,
+          "pattern": "^[^*?\\[\\]\\r\\n]+$"
+        },
+        "title": "Windows optional features",
+        "type": "object"
+      },
+      "windows-power": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Desired consumer display and presence-aware timeouts for the active Windows 11 power scheme. Values are seconds; zero disables the corresponding timeout.",
+        "minProperties": 1,
+        "properties": {
+          "display_off_after": {
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "on_battery_seconds": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "plugged_in_seconds": {
+                "maximum": 4294967295,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "presence_sensing": {
+            "additionalProperties": false,
+            "description": "Windows 11 human-presence timeouts. These settings have an effect only on devices with a compatible presence sensor and when the consumer Presence Sensing feature is enabled.",
+            "minProperties": 1,
+            "properties": {
+              "away_dim_after": {
+                "additionalProperties": false,
+                "description": "Time after the sensor reports that the user has left before Windows dims the display.",
+                "minProperties": 1,
+                "properties": {
+                  "on_battery_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "plugged_in_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "away_display_off_after": {
+                "additionalProperties": false,
+                "description": "Lock on Leave delay: time after the sensor reports that the user has left before Windows turns off the display and begins the lock experience.",
+                "minProperties": 1,
+                "properties": {
+                  "on_battery_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "plugged_in_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "inattentive_dim_after": {
+                "additionalProperties": false,
+                "description": "Time after the sensor reports that the user is looking away before Windows dims the display.",
+                "minProperties": 1,
+                "properties": {
+                  "on_battery_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "plugged_in_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "inattentive_display_off_after": {
+                "additionalProperties": false,
+                "description": "Time after the sensor reports that the user is looking away before Windows turns off the display.",
+                "minProperties": 1,
+                "properties": {
+                  "on_battery_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "plugged_in_seconds": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "title": "Windows 11 power and presence settings",
+        "type": "object"
+      },
+      "windows-remote-desktop": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Controls whether Remote Desktop connections are accepted. This mirrors the WindowsDeveloperConfig registry setting and does not manage firewall rules or Windows edition support.",
+        "properties": {
+          "state": {
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "Remote Desktop host setting",
+        "type": "object"
+      },
+      "windows-screen-saver": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Controls whether the current user's screen saver is enabled. Disabling it is equivalent to selecting (None) in the Windows Screen Saver Settings dialog.",
+        "properties": {
+          "state": {
+            "description": "Whether screen saving is enabled. The selected screen saver, timeout, and sign-in behavior remain unmanaged.",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "Screen saver",
+        "type": "object"
+      },
+      "windows-search": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "highlights": {
+            "type": "boolean"
+          },
+          "web_suggestions": {
+            "type": "boolean"
+          }
+        },
+        "title": "Windows Search settings",
+        "type": "object"
+      },
+      "windows-start-menu": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "folders": {
+            "additionalProperties": false,
+            "description": "Folders displayed beside the power button on Windows 11.",
+            "properties": {
+              "documents": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "downloads": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "file_explorer": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "music": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "network": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "personal_folder": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "pictures": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "settings": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              "videos": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "oem_pins": {
+            "const": "absent",
+            "description": "Desired state of the placement's OEM LayoutModification.json. System placement manages the Default user template; user placement manages the current profile."
+          },
+          "shortcuts": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            },
+            "description": "Start Menu shortcuts managed relative to the placement's Programs directory. System placement uses the all-users Start Menu; user placement uses the current user's Start Menu.",
+            "propertyNames": {
+              "description": "Relative .lnk path beneath the Start Menu Programs directory.",
+              "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+\\.lnk$",
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "show_most_used_apps": {
+            "type": "boolean"
+          },
+          "show_recent_items": {
+            "description": "Show recently opened items in Start, Jump Lists, and File Explorer.",
+            "type": "boolean"
+          },
+          "show_recently_added_apps": {
+            "type": "boolean"
+          },
+          "show_recommendations": {
+            "description": "Show recommendations in the Windows 11 Start menu.",
+            "type": "boolean"
+          }
+        },
+        "title": "Start menu personalization",
+        "type": "object"
+      },
+      "windows-taskbar": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "alignment": {
+            "enum": [
+              "left",
+              "center"
+            ],
+            "type": "string"
+          },
+          "automatically_hide": {
+            "type": "boolean"
+          },
+          "combine_buttons": {
+            "enum": [
+              "always",
+              "when_full",
+              "never"
+            ],
+            "type": "string"
+          },
+          "show_badges": {
+            "type": "boolean"
+          },
+          "show_copilot": {
+            "type": "boolean"
+          },
+          "show_search": {
+            "enum": [
+              "hidden",
+              "icon",
+              "box"
+            ],
+            "type": "string"
+          },
+          "show_task_view": {
+            "type": "boolean"
+          },
+          "show_widgets": {
+            "type": "boolean"
+          },
+          "slots": {
+            "additionalProperties": false,
+            "description": "The ordered taskbar apps. An exhaustive list maps deterministically to Win+1 through Win+5.",
+            "properties": {
+              "apps": {
+                "items": {
+                  "additionalProperties": false,
+                  "oneOf": [
+                    {
+                      "required": [
+                        "app"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "app_user_model_id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "desktop_application_id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "desktop_application_link_path"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "app": {
+                      "description": "A portable Winix application alias resolved on the target machine.",
+                      "enum": [
+                        "windows_terminal",
+                        "jetbrains_toolbox",
+                        "microsoft_edge"
+                      ],
+                      "type": "string"
+                    },
+                    "app_user_model_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "desktop_application_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "desktop_application_link_path": {
+                      "minLength": 1,
+                      "pattern": "\\.[lL][nN][kK]$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "maxItems": 5,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "exhaustive": {
+                "description": "When true, remove pins not listed in apps and make these the Win+number slots. When false, retain other pins, which may precede these apps.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "apps",
+              "exhaustive"
+            ],
+            "type": "object"
+          },
+          "system_tray": {
+            "additionalProperties": false,
+            "properties": {
+              "other_icons": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "visibility": {
+                      "enum": [
+                        "shown",
+                        "hidden"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "visibility"
+                  ],
+                  "type": "object"
+                },
+                "description": "Maps live notification-area display names to whether their icons appear directly on the taskbar or in the hidden-icon overflow menu.",
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              "show_bluetooth": {
+                "type": "boolean"
+              },
+              "show_seconds": {
+                "type": "boolean"
+              },
+              "show_touch_keyboard": {
+                "enum": [
+                  "never",
+                  "when_no_keyboard",
+                  "always"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "title": "Taskbar personalization",
+        "type": "object"
+      },
+      "windows-theme": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "dark",
+              "light"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "Windows theme",
+        "type": "object"
+      },
+      "windows-update": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Controls supported Windows Update preferences available on current Windows 11 editions. These preferences do not disable servicing or guarantee that Windows will never restart.",
+        "minProperties": 1,
+        "properties": {
+          "get_latest_updates_as_soon_as_available": {
+            "description": "Receive optional updates and gradual feature rollouts as soon as they are available for the device.",
+            "type": "boolean"
+          },
+          "restart_notifications": {
+            "description": "Notify the interactive user when an installed update requires a restart.",
+            "type": "boolean"
+          },
+          "update_other_microsoft_products": {
+            "description": "Receive updates for other Microsoft products alongside Windows updates.",
+            "type": "boolean"
+          }
+        },
+        "title": "Windows Update preferences",
+        "type": "object"
+      },
+      "windows-widgets": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "Windows Widgets policy",
+        "type": "object"
+      },
+      "windows-wsl": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "absent"
+                }
+              },
+              "required": [
+                "state"
+              ]
+            },
+            "then": {
+              "properties": {
+                "distros": {
+                  "maxItems": 0
+                },
+                "preview": {
+                  "const": false
+                },
+                "version": false
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "preview": {
+                  "const": true
+                }
+              },
+              "required": [
+                "preview"
+              ]
+            },
+            "then": {
+              "required": [
+                "version"
+              ]
+            }
+          }
+        ],
+        "description": "WSL and distributions offered by the WSL online catalog.",
+        "minProperties": 1,
+        "properties": {
+          "distros": {
+            "default": [],
+            "description": "Exact distribution names from `wsl.exe --list --online` to ensure are installed. Omission manages no distributions, and other installed distributions are left unchanged.",
+            "items": {
+              "minLength": 1,
+              "pattern": "^[^\\r\\n]+$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "first_run_oobe": {
+            "const": "suppressed",
+            "description": "Suppress the current user's Windows 'Welcome to WSL' first-run experience. This does not skip a distribution's own account setup."
+          },
+          "preview": {
+            "default": false,
+            "description": "When upgrading, select the latest WSL prerelease instead of the latest stable release. Omission uses the stable channel when version is managed.",
+            "type": "boolean"
+          },
+          "state": {
+            "default": "installed",
+            "description": "Desired WSL installation state. Omission means installed. Setting absent also unregisters every installed distribution and deletes its data.",
+            "enum": [
+              "installed",
+              "absent"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "const": "latest",
+            "description": "Set to latest to upgrade WSL. Omit to accept the installed WSL version."
+          }
+        },
+        "title": "Windows Subsystem for Linux",
+        "type": "object"
+      },
+      "winget": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "description": "WinGet source name.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "description": "Desired installation state. Omission means installed.",
+              "enum": [
+                "installed",
+                "absent"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "description": "An exact version or 'latest'. Omit to accept any installed version.",
+              "examples": [
+                "latest",
+                "7.6.0"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "description": "Packages managed through Windows Package Manager.",
+        "propertyNames": {
+          "description": "Exact, case-sensitive canonical WinGet package ID.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": "WinGet packages",
+        "type": "object"
+      }
+    }
+  },
+  "$id": "https://winix.dev/schemas/winix-cfg.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "devices": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "system": {
+            "additionalProperties": false,
+            "properties": {
+              "applications": {
+                "additionalProperties": false,
+                "properties": {
+                  "microsoft_edge": {
+                    "$ref": "#/$defs/plugins/microsoft-edge-policy"
+                  }
+                },
+                "type": "object"
+              },
+              "fonts": {
+                "additionalProperties": false,
+                "properties": {
+                  "nerd_fonts": {
+                    "$ref": "#/$defs/plugins/nerd-fonts"
+                  }
+                },
+                "type": "object"
+              },
+              "packages": {
+                "additionalProperties": false,
+                "properties": {
+                  "appx": {
+                    "$ref": "#/$defs/plugins/appx"
+                  },
+                  "arp": {
+                    "$ref": "#/$defs/plugins/arp"
+                  },
+                  "powershell_modules": {
+                    "$ref": "#/$defs/plugins/powershell-modules"
+                  },
+                  "windows_installer": {
+                    "$ref": "#/$defs/plugins/windows-installer"
+                  },
+                  "winget": {
+                    "$ref": "#/$defs/plugins/winget"
+                  }
+                },
+                "type": "object"
+              },
+              "windows": {
+                "additionalProperties": false,
+                "properties": {
+                  "developer": {
+                    "$ref": "#/$defs/plugins/windows-developer"
+                  },
+                  "features": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "optional": {
+                        "$ref": "#/$defs/plugins/windows-optional-features"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "personalization": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "start_menu": {
+                        "$ref": "#/$defs/plugins/windows-start-menu"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "power": {
+                    "$ref": "#/$defs/plugins/windows-power"
+                  },
+                  "remote_desktop": {
+                    "$ref": "#/$defs/plugins/windows-remote-desktop"
+                  },
+                  "search": {
+                    "$ref": "#/$defs/plugins/windows-search"
+                  },
+                  "update": {
+                    "$ref": "#/$defs/plugins/windows-update"
+                  },
+                  "widgets": {
+                    "$ref": "#/$defs/plugins/windows-widgets"
+                  },
+                  "wsl": {
+                    "$ref": "#/$defs/plugins/windows-wsl"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "users": {
+            "additionalProperties": false,
+            "properties": {
+              "current": {
+                "additionalProperties": false,
+                "properties": {
+                  "applications": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "powertoys": {
+                        "$ref": "#/$defs/plugins/applications-powertoys"
+                      },
+                      "windows_terminal": {
+                        "$ref": "#/$defs/plugins/applications-windows-terminal"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "fonts": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "nerd_fonts": {
+                        "$ref": "#/$defs/plugins/nerd-fonts"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "packages": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appx": {
+                        "$ref": "#/$defs/plugins/appx"
+                      },
+                      "powershell_modules": {
+                        "$ref": "#/$defs/plugins/powershell-modules"
+                      },
+                      "winget": {
+                        "$ref": "#/$defs/plugins/winget"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "windows": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "developer": {
+                        "$ref": "#/$defs/plugins/windows-developer"
+                      },
+                      "file_explorer": {
+                        "$ref": "#/$defs/plugins/windows-file-explorer"
+                      },
+                      "multitasking": {
+                        "$ref": "#/$defs/plugins/windows-multitasking"
+                      },
+                      "notifications": {
+                        "$ref": "#/$defs/plugins/windows-notifications"
+                      },
+                      "personalization": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "desktop": {
+                            "$ref": "#/$defs/plugins/windows-desktop"
+                          },
+                          "screen_saver": {
+                            "$ref": "#/$defs/plugins/windows-screen-saver"
+                          },
+                          "start_menu": {
+                            "$ref": "#/$defs/plugins/windows-start-menu"
+                          },
+                          "taskbar": {
+                            "$ref": "#/$defs/plugins/windows-taskbar"
+                          },
+                          "theme": {
+                            "$ref": "#/$defs/plugins/windows-theme"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "search": {
+                        "$ref": "#/$defs/plugins/windows-search"
+                      },
+                      "wsl": {
+                        "$ref": "#/$defs/plugins/windows-wsl"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Device-specific overlays keyed by Windows computer name.",
+      "type": "object"
+    },
+    "system": {
+      "additionalProperties": false,
+      "properties": {
+        "applications": {
+          "additionalProperties": false,
+          "properties": {
+            "microsoft_edge": {
+              "$ref": "#/$defs/plugins/microsoft-edge-policy"
+            }
+          },
+          "type": "object"
+        },
+        "fonts": {
+          "additionalProperties": false,
+          "properties": {
+            "nerd_fonts": {
+              "$ref": "#/$defs/plugins/nerd-fonts"
+            }
+          },
+          "type": "object"
+        },
+        "packages": {
+          "additionalProperties": false,
+          "properties": {
+            "appx": {
+              "$ref": "#/$defs/plugins/appx"
+            },
+            "arp": {
+              "$ref": "#/$defs/plugins/arp"
+            },
+            "powershell_modules": {
+              "$ref": "#/$defs/plugins/powershell-modules"
+            },
+            "windows_installer": {
+              "$ref": "#/$defs/plugins/windows-installer"
+            },
+            "winget": {
+              "$ref": "#/$defs/plugins/winget"
+            }
+          },
+          "type": "object"
+        },
+        "windows": {
+          "additionalProperties": false,
+          "properties": {
+            "developer": {
+              "$ref": "#/$defs/plugins/windows-developer"
+            },
+            "features": {
+              "additionalProperties": false,
+              "properties": {
+                "optional": {
+                  "$ref": "#/$defs/plugins/windows-optional-features"
+                }
+              },
+              "type": "object"
+            },
+            "personalization": {
+              "additionalProperties": false,
+              "properties": {
+                "start_menu": {
+                  "$ref": "#/$defs/plugins/windows-start-menu"
+                }
+              },
+              "type": "object"
+            },
+            "power": {
+              "$ref": "#/$defs/plugins/windows-power"
+            },
+            "remote_desktop": {
+              "$ref": "#/$defs/plugins/windows-remote-desktop"
+            },
+            "search": {
+              "$ref": "#/$defs/plugins/windows-search"
+            },
+            "update": {
+              "$ref": "#/$defs/plugins/windows-update"
+            },
+            "widgets": {
+              "$ref": "#/$defs/plugins/windows-widgets"
+            },
+            "wsl": {
+              "$ref": "#/$defs/plugins/windows-wsl"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "users": {
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "additionalProperties": false,
+          "properties": {
+            "applications": {
+              "additionalProperties": false,
+              "properties": {
+                "powertoys": {
+                  "$ref": "#/$defs/plugins/applications-powertoys"
+                },
+                "windows_terminal": {
+                  "$ref": "#/$defs/plugins/applications-windows-terminal"
+                }
+              },
+              "type": "object"
+            },
+            "fonts": {
+              "additionalProperties": false,
+              "properties": {
+                "nerd_fonts": {
+                  "$ref": "#/$defs/plugins/nerd-fonts"
+                }
+              },
+              "type": "object"
+            },
+            "packages": {
+              "additionalProperties": false,
+              "properties": {
+                "appx": {
+                  "$ref": "#/$defs/plugins/appx"
+                },
+                "powershell_modules": {
+                  "$ref": "#/$defs/plugins/powershell-modules"
+                },
+                "winget": {
+                  "$ref": "#/$defs/plugins/winget"
+                }
+              },
+              "type": "object"
+            },
+            "windows": {
+              "additionalProperties": false,
+              "properties": {
+                "developer": {
+                  "$ref": "#/$defs/plugins/windows-developer"
+                },
+                "file_explorer": {
+                  "$ref": "#/$defs/plugins/windows-file-explorer"
+                },
+                "multitasking": {
+                  "$ref": "#/$defs/plugins/windows-multitasking"
+                },
+                "notifications": {
+                  "$ref": "#/$defs/plugins/windows-notifications"
+                },
+                "personalization": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "desktop": {
+                      "$ref": "#/$defs/plugins/windows-desktop"
+                    },
+                    "screen_saver": {
+                      "$ref": "#/$defs/plugins/windows-screen-saver"
+                    },
+                    "start_menu": {
+                      "$ref": "#/$defs/plugins/windows-start-menu"
+                    },
+                    "taskbar": {
+                      "$ref": "#/$defs/plugins/windows-taskbar"
+                    },
+                    "theme": {
+                      "$ref": "#/$defs/plugins/windows-theme"
+                    }
+                  },
+                  "type": "object"
+                },
+                "search": {
+                  "$ref": "#/$defs/plugins/windows-search"
+                },
+                "wsl": {
+                  "$ref": "#/$defs/plugins/windows-wsl"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "Winix configuration",
+  "type": "object"
+}

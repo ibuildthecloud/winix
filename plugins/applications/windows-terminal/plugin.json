@@ -1,0 +1,24 @@
+{
+  "protocol_version": 2,
+  "name": "applications-windows-terminal",
+  "path": "applications.windows_terminal",
+  "placements": ["user"],
+  "entrypoint": "plugin.ps1",
+  "schema": "schema.json",
+  "requires": {
+    "powershell": ">=7.0",
+    "administrator": false,
+    "commands": [],
+    "configuration": {
+      "packages": {
+        "winget": {
+          "Microsoft.WindowsTerminal": {
+            "state": "installed",
+            "version": "latest",
+            "source": "winget"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Screen saver",
+  "description": "Controls whether the current user's screen saver is enabled. Disabling it is equivalent to selecting (None) in the Windows Screen Saver Settings dialog.",
+  "type": "object",
+  "properties": {
+    "state": {
+      "description": "Whether screen saving is enabled. The selected screen saver, timeout, and sign-in behavior remain unmanaged.",
+      "type": "string",
+      "enum": ["enabled", "disabled"]
+    }
+  },
+  "required": ["state"],
+  "additionalProperties": false
+}
