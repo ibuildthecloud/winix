@@ -3,6 +3,7 @@ param([Parameter(Mandatory)] [ValidateSet('validate', 'plan', 'apply')] [string]
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '..\..\shared\Winix.PluginSdk.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Winix.Wsl.psm1') -Force
 
 $StableReleaseUri = 'https://api.github.com/repos/microsoft/WSL/releases/latest'
 $ReleaseCatalogUri = 'https://api.github.com/repos/microsoft/WSL/releases?per_page=30'
@@ -252,33 +253,11 @@ if ($scope -eq 'user') {
     }
 
     if (Test-WinixAdministrator) { throw 'User WSL settings cannot run with an elevated token.' }
-    if (-not (Test-WinixPropertyPresent $request 'operations')) { throw 'Apply request is missing its planned operations.' }
-    $planned = @($request.operations)
-    foreach ($operationItem in $planned) {
-        if ($operationItem.resource.type -ne 'windows.wsl.first_run_oobe' -or $operationItem.resource.id -ne 'current-user' -or $operationItem.action -ne 'suppress_first_run_oobe') {
-            throw "Unsupported planned operation '$($operationItem.id)'."
-        }
-        $observedBefore = Get-WslFirstRunOobeState
-        if ($observedBefore -cne "$($operationItem.before)") { throw "Plan is stale for '$($operationItem.id)': WSL first-run OOBE state changed after planning." }
-        if ("$($operationItem.after)" -cne 'suppressed') { throw "Planned operation '$($operationItem.id)' has an unsupported postcondition." }
-    }
-
-    $applied = [System.Collections.Generic.List[string]]::new()
-    foreach ($operationItem in $planned) {
-        Write-WinixEvent -Kind 'resource_change_started' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Data @{ operation_id = $operationItem.id; action = $operationItem.action; before = $operationItem.before; after = $operationItem.after }
+    $result = Invoke-WslUserApply -Request $request -GetState { Get-WslFirstRunOobeState } -Mutate {
         if (-not (Test-Path -LiteralPath $FirstRunOobePath)) { New-Item -Path $FirstRunOobePath -Force | Out-Null }
         New-ItemProperty -LiteralPath $FirstRunOobePath -Name 'OOBEComplete' -PropertyType DWord -Value 1 -Force | Out-Null
-        $observedAfter = Get-WslFirstRunOobeState
-        if ($observedAfter -ne 'suppressed') {
-            $diagnostic = @{ severity = 'error'; code = 'wsl.first_run_oobe.postcondition.failed'; path = "$($request.path).first_run_oobe"; message = 'Windows did not retain the requested WSL first-run OOBE state.'; data = @{ operation_id = $operationItem.id; observed = $observedAfter; applied_operation_ids = @($applied) } }
-            Write-WinixEvent -Kind 'diagnostic' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Diagnostic $diagnostic
-            Write-WinixResponse @{ protocol_version = 2; success = $false; changed = $true; operations = $planned; applied_operation_ids = $applied; diagnostics = @($diagnostic); error = @{ code = 'wsl.apply.postcondition_failed'; message = $diagnostic.message }; restart_required = @{ explorer = $false; system = $false } }
-            exit
-        }
-        $applied.Add($operationItem.id)
-        Write-WinixEvent -Kind 'resource_change_completed' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Data @{ operation_id = $operationItem.id; changed = $true; observed = $observedAfter }
     }
-    Write-WinixResponse @{ protocol_version = 2; success = $true; changed = ($applied.Count -gt 0); operations = $planned; applied_operation_ids = $applied; diagnostics = @(); error = $null; restart_required = @{ explorer = $false; system = $false } }
+    Write-WinixResponse $result
     exit
 }
 
@@ -421,25 +400,16 @@ if ($Operation -eq 'plan') {
 }
 
 if (-not (Test-WinixAdministrator)) { throw 'WSL configuration requires an elevated token.' }
-if (-not (Test-WinixPropertyPresent $request 'operations')) { throw 'Apply request is missing its planned operations.' }
-$planned = @($request.operations)
-foreach ($operationItem in $planned) {
-    if ($operationItem.resource.type -notin @('windows.wsl', 'windows.wsl.distro') -or $operationItem.action -notin @('enable_features', 'install', 'uninstall', 'update', 'install_distro')) {
-        throw "Unsupported planned operation '$($operationItem.id)'."
+$result = Invoke-WslSystemApply -Request $request -GetState { Get-WslState } -ResolveDistros {
+    param([string[]] $Names)
+    $catalogDiagnostics = [System.Collections.Generic.List[object]]::new()
+    $canonical = @(Resolve-Distros -Names $Names -Diagnostics $catalogDiagnostics -Path $request.path)
+    if ($catalogDiagnostics.Count -gt 0 -or $canonical.Count -ne $Names.Count) {
+        throw 'One or more planned WSL distributions are no longer in the online catalog.'
     }
-}
-
-$applied = [System.Collections.Generic.List[string]]::new()
-foreach ($operationItem in $planned) {
-    $observedBefore = Get-WslState
-    if ($operationItem.action -eq 'enable_features' -and $observedBefore.features_enabled) { throw "Plan is stale for '$($operationItem.id)': the WSL Windows features are already provisioned." }
-    if ($operationItem.action -eq 'install' -and ($observedBefore.installed -or -not $observedBefore.features_enabled -or $observedBefore.restart_pending)) { throw "Plan is stale for '$($operationItem.id)': WSL cannot be installed in the observed feature/restart state." }
-    if ($operationItem.action -eq 'uninstall' -and -not (Test-WinixJsonEqual $observedBefore $operationItem.before)) { throw "Plan is stale for '$($operationItem.id)': WSL state changed after planning." }
-    if ($operationItem.action -in @('update', 'install_distro') -and -not $observedBefore.installed) { throw "Plan is stale for '$($operationItem.id)': WSL is no longer installed." }
-    if ($operationItem.action -eq 'update' -and "$($observedBefore.version)" -cne "$($operationItem.before.version)") { throw "Plan is stale for '$($operationItem.id)': the WSL version changed after planning." }
-    if ($operationItem.action -eq 'install_distro' -and @($observedBefore.distros | Where-Object { $_ -ceq $operationItem.resource.id }).Count -gt 0) { throw "Plan is stale for '$($operationItem.id)': the distribution is already installed." }
-
-    Write-WinixEvent -Kind 'resource_change_started' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Data @{ operation_id = $operationItem.id; action = $operationItem.action; before = $operationItem.before; after = $operationItem.after }
+    return $canonical
+} -Mutate {
+    param([object] $operationItem, [object] $observedBefore)
     switch ($operationItem.action) {
         'enable_features' {
             Enable-WslFeatures
@@ -454,10 +424,7 @@ foreach ($operationItem in $planned) {
             [void](Invoke-Wsl -Arguments $arguments)
         }
         'install_distro' {
-            $catalogDiagnostics = [System.Collections.Generic.List[object]]::new()
-            $canonical = @(Resolve-Distros -Names @("$($operationItem.data.name)") -Diagnostics $catalogDiagnostics -Path $request.path)
-            if ($catalogDiagnostics.Count -gt 0 -or $canonical.Count -ne 1) { throw "WSL distribution '$($operationItem.data.name)' is no longer in the online catalog." }
-            [void](Invoke-Wsl -Arguments @('--install', '--distribution', $canonical[0], '--no-launch'))
+            [void](Invoke-Wsl -Arguments @('--install', '--distribution', "$($operationItem.data.name)", '--no-launch'))
         }
         'uninstall' {
             foreach ($distro in @($observedBefore.distros)) { [void](Invoke-Wsl -Arguments @('--unregister', "$distro")) }
@@ -467,23 +434,6 @@ foreach ($operationItem in $planned) {
             Remove-Item -LiteralPath $RestartReceiptPath -Force -ErrorAction SilentlyContinue
         }
     }
-
-    $observedAfter = Get-WslState
-    $satisfied = switch ($operationItem.action) {
-        'enable_features' { [bool]$observedAfter.features_enabled -and [bool]$observedAfter.restart_pending }
-        'install' { [bool]$observedAfter.installed -and -not [bool]$observedAfter.restart_pending }
-        'uninstall' { -not [bool]$observedAfter.installed }
-        'update' { $observedAfter.version -eq "$($operationItem.data.version)" }
-        'install_distro' { @($observedAfter.distros | Where-Object { $_ -ceq $operationItem.resource.id }).Count -gt 0 }
-    }
-    if (-not $satisfied) {
-        $diagnostic = @{ severity = 'error'; code = 'wsl.postcondition.failed'; path = $request.path; message = "Planned WSL operation '$($operationItem.id)' did not reach its declared postcondition."; data = @{ operation_id = $operationItem.id; observed = $observedAfter; applied_operation_ids = @($applied) } }
-        Write-WinixEvent -Kind 'diagnostic' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Diagnostic $diagnostic
-        Write-WinixResponse @{ protocol_version = 2; success = $false; changed = $true; operations = $planned; applied_operation_ids = $applied; diagnostics = @($diagnostic); error = @{ code = 'wsl.apply.postcondition_failed'; message = $diagnostic.message }; restart_required = @{ explorer = $false; system = ($operationItem.action -in @('install', 'uninstall')) } }
-        exit
-    }
-    $applied.Add($operationItem.id)
-    Write-WinixEvent -Kind 'resource_change_completed' -ResourceType $operationItem.resource.type -ResourceId $operationItem.resource.id -Data @{ operation_id = $operationItem.id; changed = $true }
 }
-
-Write-WinixResponse @{ protocol_version = 2; success = $true; changed = ($applied.Count -gt 0); operations = $planned; applied_operation_ids = $applied; diagnostics = $diagnostics; restart_required = @{ explorer = $false; system = (@($planned | Where-Object { $_.action -in @('enable_features', 'uninstall') }).Count -gt 0) } }
+if ($result.success) { $result.diagnostics = $diagnostics }
+Write-WinixResponse $result
